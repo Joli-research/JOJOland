@@ -1,1 +1,3827 @@
-# JOJOland
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>评了么 - 强化版数据抽样工具</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#5D5CDE',
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            },
+            darkMode: 'class'
+        }
+    </script>
+    <style>
+        .loader {
+            border-top-color: #5D5CDE;
+            animation: spinner 1.5s linear infinite;
+        }
+        
+        @keyframes spinner {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        @keyframes attention-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(93, 92, 222, 0.4); }
+            50% { box-shadow: 0 0 0 8px rgba(93, 92, 222, 0); }
+        }
+        
+        .attention-pulse {
+            animation: attention-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        /* 自定义滚动条样式 */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 3px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        @media (prefers-color-scheme: dark) {
+            .custom-scrollbar::-webkit-scrollbar-track {
+                background: #374151;
+            }
+            
+            .custom-scrollbar::-webkit-scrollbar-thumb {
+                background: #6B7280;
+            }
+            
+            .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                background: #9CA3AF;
+            }
+        }
+        
+        /* 标签页样式 */
+        .tab-active {
+            color: #5D5CDE;
+            border-bottom: 2px solid #5D5CDE;
+        }
+        
+        /* 历史记录卡片悬停效果 */
+        .history-card {
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        
+        .history-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-200">
+    <div class="container mx-auto px-4 py-8 max-w-6xl">
+        <!-- 标题和介绍 -->
+        <div class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold mb-3 text-primary">评了么</h1>
+            <p class="text-lg text-gray-600 dark:text-gray-300">
+                构建评测集的智能抽样工具 <span class="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">强化版</span>
+            </p>
+        </div>
+
+        <!-- 主要内容区 -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <!-- 左侧控制区 -->
+            <div class="lg:col-span-5 bg-white dark:bg-gray-800 rounded-lg shadow-md p-5">
+                <!-- 步骤指示器 -->
+                <div class="mb-6">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center">
+                            <div id="step1-indicator" class="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-semibold">1</div>
+                            <div class="ml-2 text-sm font-medium">文件解析</div>
+                        </div>
+                        <div class="flex-1 h-0.5 mx-4 bg-gray-200 dark:bg-gray-600"></div>
+                        <div class="flex items-center">
+                            <div id="step2-indicator" class="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 flex items-center justify-center font-semibold">2</div>
+                            <div class="ml-2 text-sm font-medium text-gray-500 dark:text-gray-400">字段映射</div>
+                        </div>
+                        <div class="flex-1 h-0.5 mx-4 bg-gray-200 dark:bg-gray-600"></div>
+                        <div class="flex items-center">
+                            <div id="step3-indicator" class="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 flex items-center justify-center font-semibold">3</div>
+                            <div class="ml-2 text-sm font-medium text-gray-500 dark:text-gray-400">目标设置</div>
+                        </div>
+                        <div class="flex-1 h-0.5 mx-4 bg-gray-200 dark:bg-gray-600"></div>
+                        <div class="flex items-center">
+                            <div id="step4-indicator" class="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 flex items-center justify-center font-semibold">4</div>
+                            <div class="ml-2 text-sm font-medium text-gray-500 dark:text-gray-400">结果</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 步骤1：文件解析 -->
+                <div id="step1" class="step-content">
+                    <div class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">将Excel文件拖到这里，或<span class="text-primary cursor-pointer font-medium" id="browse-files">浏览文件</span></p>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">支持 .xlsx, .xls, .csv 格式</p>
+                        <input type="file" id="file-input" accept=".xlsx, .xls, .csv" class="hidden" />
+                    </div>
+
+                    <div id="file-info" class="mt-4 hidden">
+                        <div class="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <div class="flex-1">
+                                <p id="file-name" class="text-sm font-medium truncate"></p>
+                                <p id="file-size" class="text-xs text-gray-500 dark:text-gray-400"></p>
+                            </div>
+                            <button id="remove-file" class="text-red-500 hover:text-red-700">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="mt-6">
+                        <h3 class="font-medium mb-2">解析方法</h3>
+                        <div class="space-y-2">
+                            <div class="flex items-center">
+                                <input type="radio" id="method-xlsx" name="parse-method" value="xlsx" class="text-primary focus:ring-primary" checked>
+                                <label for="method-xlsx" class="ml-2 text-sm text-gray-700 dark:text-gray-300">标准Excel解析 (推荐)</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="radio" id="method-csv" name="parse-method" value="csv" class="text-primary focus:ring-primary">
+                                <label for="method-csv" class="ml-2 text-sm text-gray-700 dark:text-gray-300">CSV解析 (适用CSV格式)</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="radio" id="method-stream" name="parse-method" value="stream" class="text-primary focus:ring-primary">
+                                <label for="method-stream" class="ml-2 text-sm text-gray-700 dark:text-gray-300">流式解析 (适用大文件)</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button id="parse-btn" class="w-full mt-6 bg-primary hover:bg-opacity-90 text-white font-medium py-2 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                        解析文件数据
+                    </button>
+
+                    <!-- 历史记录区域 -->
+                    <div id="history-section" class="mt-8">
+                        <h3 class="font-medium mb-4 flex items-center justify-between">
+                            <span>历史记录</span>
+                            <button id="clear-history" class="text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-2 py-1 rounded">
+                                清空
+                            </button>
+                        </h3>
+                        <div id="no-history" class="py-4 text-center text-gray-500 dark:text-gray-400">
+                            <p>暂无历史记录</p>
+                        </div>
+                        <div id="history-list" class="space-y-3 hidden"></div>
+                    </div>
+
+                    <!-- 解析日志区域 -->
+                    <div class="mt-6">
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="font-medium">解析日志</h3>
+                            <button id="clear-log" class="text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-2 py-1 rounded">
+                                清空
+                            </button>
+                        </div>
+                        <div id="log-container" class="bg-gray-100 dark:bg-gray-900 p-3 rounded-lg h-40 overflow-y-auto custom-scrollbar">
+                            <div id="log-content" class="text-xs text-gray-800 dark:text-gray-300 space-y-1"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 步骤2：字段映射 -->
+                <div id="step2" class="step-content hidden">
+                    <h3 class="font-medium text-lg mb-3">字段映射</h3>
+                    <div id="mapping-guide" class="bg-blue-50 dark:bg-blue-900 dark:bg-opacity-20 p-3 rounded-lg mb-4 border border-blue-200 dark:border-blue-800">
+                        <div class="flex">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <p class="text-sm text-blue-700 dark:text-blue-300">
+                                已自动映射字段，请检查是否正确。<br>如需调整，可修改下方选择，然后点击<span class="font-medium">"分析数据"</span>按钮继续。
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <!-- 语言字段 -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium mb-1">语言字段</label>
+                        <select id="language-column" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 text-base">
+                            <option value="">选择列...</option>
+                        </select>
+                    </div>
+                    
+                    <!-- 数据格式字段 -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium mb-1">数据格式字段</label>
+                        <select id="format-column" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 text-base">
+                            <option value="">选择列...</option>
+                        </select>
+                    </div>
+                    
+                    <!-- 内容体裁字段 -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium mb-1">内容体裁字段</label>
+                        <select id="genre-column" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 text-base">
+                            <option value="">选择列...</option>
+                        </select>
+                    </div>
+
+                    <div class="flex justify-between mt-6">
+                        <button id="back-to-step1" class="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition duration-200">
+                            上一步
+                        </button>
+                        <button id="analyze-btn" class="attention-pulse px-4 py-2 bg-primary hover:bg-opacity-90 text-white font-medium rounded-lg transition duration-200">
+                            分析数据
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 步骤3：目标比例设置 -->
+                <div id="step3" class="step-content hidden">
+                    <div class="mb-5">
+                        <label class="block text-sm font-medium mb-1">总样本数</label>
+                        <input type="number" id="total-samples" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 text-base" value="300" min="1" />
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">输入期望提取的总样本数量</p>
+                    </div>
+
+                    <!-- 缺失组合处理选项 -->
+                    <div class="mb-5">
+                        <label class="block text-sm font-medium mb-2">缺失组合处理方式</label>
+                        <div class="space-y-2 bg-gray-50 dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+                            <div class="flex items-center">
+                                <input type="radio" id="missing-option-keep" name="missing-handling" value="keep" class="text-primary focus:ring-primary" checked>
+                                <label for="missing-option-keep" class="ml-2 text-sm text-gray-700 dark:text-gray-300">缺失的分布组合留空</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="radio" id="missing-option-fill" name="missing-handling" value="fill" class="text-primary focus:ring-primary">
+                                <label for="missing-option-fill" class="ml-2 text-sm text-gray-700 dark:text-gray-300">补充缺失的分布组合</label>
+                            </div>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">选择"补充"时，将使用其他类似数据填充缺失组合，尽量达到目标样本数</p>
+                        </div>
+                    </div>
+
+                    <!-- 比例设置区 -->
+                    <div class="space-y-5">
+                        <!-- 语言比例 -->
+                        <div>
+                            <h3 class="font-medium mb-2">语言比例设置</h3>
+                            <div id="language-proportions" class="space-y-2"></div>
+                            <button id="add-language-btn" class="mt-2 text-sm text-primary hover:underline">+ 添加更多语言</button>
+                        </div>
+                        
+                        <!-- 数据格式比例 -->
+                        <div>
+                            <h3 class="font-medium mb-2">数据格式比例设置</h3>
+                            <div id="format-proportions" class="space-y-2"></div>
+                            <button id="add-format-btn" class="mt-2 text-sm text-primary hover:underline">+ 添加更多格式</button>
+                        </div>
+                        
+                        <!-- 内容体裁比例 -->
+                        <div>
+                            <h3 class="font-medium mb-2">内容体裁比例设置</h3>
+                            <div id="genre-proportions" class="space-y-2"></div>
+                            <button id="add-genre-btn" class="mt-2 text-sm text-primary hover:underline">+ 添加更多体裁</button>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-between mt-6">
+                        <button id="back-to-step2" class="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition duration-200">
+                            上一步
+                        </button>
+                        <button id="generate-samples-btn" class="px-4 py-2 bg-primary hover:bg-opacity-90 text-white font-medium rounded-lg transition duration-200">
+                            生成样本
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 步骤4：结果 -->
+                <div id="step4" class="step-content hidden">
+                    <div class="flex justify-center items-center mb-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </div>
+                    <h3 class="text-center text-xl font-medium mb-4">抽样完成！</h3>
+                    <p class="text-center text-gray-600 dark:text-gray-300 mb-6">
+                        已成功从原始数据中抽取 <span id="extracted-count" class="font-semibold"></span> 条数据
+                    </p>
+
+                    <div class="grid grid-cols-2 gap-3 mb-6">
+                        <div class="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg">
+                            <p class="text-sm text-gray-500 dark:text-gray-400">原始数据</p>
+                            <p id="original-count" class="text-lg font-semibold"></p>
+                        </div>
+                        <div class="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg">
+                            <p class="text-sm text-gray-500 dark:text-gray-400">成功率</p>
+                            <p id="success-rate" class="text-lg font-semibold"></p>
+                        </div>
+                    </div>
+
+                    <div id="missing-combinations" class="mb-6 hidden">
+                        <h4 class="font-medium mb-2">缺失组合</h4>
+                        <div class="bg-yellow-50 dark:bg-yellow-900 dark:bg-opacity-30 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                            <div class="flex">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-yellow-500 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                                <div>
+                                    <p class="text-sm text-yellow-800 dark:text-yellow-200 font-medium">以下组合在数据中缺失</p>
+                                    <ul id="missing-list" class="mt-2 text-xs text-yellow-700 dark:text-yellow-300 space-y-1 list-disc list-inside"></ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+                        <button id="download-result" class="flex justify-center items-center px-4 py-2 bg-primary hover:bg-opacity-90 text-white font-medium rounded-lg transition duration-200">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            下载结果
+                        </button>
+                        <button id="new-sample-btn" class="flex justify-center items-center px-4 py-2 border border-primary text-primary hover:bg-primary hover:bg-opacity-10 font-medium rounded-lg transition duration-200">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            重新抽样
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 加载中状态 -->
+                <div id="loading" class="hidden flex flex-col items-center justify-center py-10">
+                    <div class="loader w-12 h-12 border-4 border-gray-200 dark:border-gray-700 rounded-full"></div>
+                    <p class="mt-4 text-gray-600 dark:text-gray-300" id="loading-text">正在处理数据...</p>
+                </div>
+            </div>
+
+            <!-- 右侧预览区 -->
+            <div class="lg:col-span-7 bg-white dark:bg-gray-800 rounded-lg shadow-md p-5">
+                <div id="preview-placeholder" class="py-12 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <p class="text-lg">上传并解析数据后在此处预览结果</p>
+                </div>
+
+                <!-- 文件解析预览区域 -->
+                <div id="parse-preview" class="hidden">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-medium">文件解析结果</h3>
+                        <div class="flex space-x-2">
+                            <span id="preview-row-count" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">0 行</span>
+                            <span id="preview-column-count" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">0 列</span>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto overflow-y-auto max-h-[600px] custom-scrollbar">
+                        <table id="preview-table" class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700">
+                            <thead class="bg-gray-50 dark:bg-gray-800">
+                                <tr id="header-row"></tr>
+                            </thead>
+                            <tbody id="data-rows" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 数据分析结果区域 -->
+                <div id="analysis-results" class="hidden">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-medium">数据分析结果</h3>
+                        <div class="flex space-x-2">
+                            <button id="table-view-btn" class="px-3 py-1 bg-primary text-white rounded-lg text-sm">表格视图</button>
+                            <button id="chart-view-btn" class="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm">图表视图</button>
+                        </div>
+                    </div>
+
+                    <!-- 表格视图 -->
+                    <div id="table-view" class="h-[600px] overflow-y-auto custom-scrollbar">
+                        <div class="grid grid-cols-3 gap-6">
+                            <!-- 语言分布表格 -->
+                            <div class="col-span-3 md:col-span-1">
+                                <h4 class="font-medium mb-2">语言分布</h4>
+                                <div class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+                                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                        <thead class="bg-gray-50 dark:bg-gray-800">
+                                            <tr>
+                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">语言</th>
+                                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">数量</th>
+                                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">比例</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="language-table" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            
+                            <!-- 数据格式分布表格 -->
+                            <div class="col-span-3 md:col-span-1">
+                                <h4 class="font-medium mb-2">数据格式分布</h4>
+                                <div class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+                                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                        <thead class="bg-gray-50 dark:bg-gray-800">
+                                            <tr>
+                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">格式</th>
+                                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">数量</th>
+                                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">比例</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="format-table" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            
+                            <!-- 内容体裁分布表格 -->
+                            <div class="col-span-3 md:col-span-1">
+                                <h4 class="font-medium mb-2">内容体裁分布</h4>
+                                <div class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+                                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                        <thead class="bg-gray-50 dark:bg-gray-800">
+                                            <tr>
+                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">体裁</th>
+                                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">数量</th>
+                                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">比例</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="genre-table" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 交叉分布表格 -->
+                        <div class="mt-8">
+                            <h4 class="font-medium mb-3">交叉分布情况</h4>
+                            <div class="overflow-x-auto overflow-y-auto max-h-[300px] custom-scrollbar">
+                                <table id="cross-table" class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                    <!-- 动态生成的交叉表将在这里显示 -->
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 图表视图 -->
+                    <div id="chart-view" class="hidden h-[600px] overflow-y-auto custom-scrollbar">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <!-- 语言分布图表 -->
+                            <div>
+                                <h4 class="font-medium mb-2">语言分布</h4>
+                                <div class="h-60 bg-white dark:bg-gray-800 rounded-lg p-3">
+                                    <canvas id="language-chart"></canvas>
+                                </div>
+                            </div>
+                            
+                            <!-- 数据格式分布图表 -->
+                            <div>
+                                <h4 class="font-medium mb-2">数据格式分布</h4>
+                                <div class="h-60 bg-white dark:bg-gray-800 rounded-lg p-3">
+                                    <canvas id="format-chart"></canvas>
+                                </div>
+                            </div>
+                            
+                            <!-- 内容体裁分布图表 -->
+                            <div class="md:col-span-2">
+                                <h4 class="font-medium mb-2">内容体裁分布</h4>
+                                <div class="h-60 bg-white dark:bg-gray-800 rounded-lg p-3">
+                                    <canvas id="genre-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 抽样结果预览区域 -->
+                <div id="sample-results" class="hidden">
+                    <!-- 结果导航标签 -->
+                    <div class="border-b border-gray-200 dark:border-gray-700 mb-4">
+                        <ul class="flex -mb-px" role="tablist">
+                            <li class="mr-4">
+                                <button id="tab-basic" class="py-2 px-1 tab-active" role="tab" aria-selected="true">基本结果</button>
+                            </li>
+                            <li class="mr-4">
+                                <button id="tab-comparison" class="py-2 px-1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300" role="tab" aria-selected="false">比例对比</button>
+                            </li>
+                            <li>
+                                <button id="tab-data" class="py-2 px-1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300" role="tab" aria-selected="false">数据预览</button>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- 基本结果面板 -->
+                    <div id="panel-basic" class="h-[600px] overflow-y-auto custom-scrollbar">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-medium">抽样结果</h3>
+                            <div class="flex space-x-2">
+                                <button id="result-table-btn" class="px-3 py-1 bg-primary text-white rounded-lg text-sm">表格视图</button>
+                                <button id="result-chart-btn" class="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm">图表视图</button>
+                            </div>
+                        </div>
+
+                        <!-- 结果表格视图 -->
+                        <div id="result-table-view">
+                            <div class="grid grid-cols-3 gap-6">
+                                <!-- 语言分布结果表格 -->
+                                <div class="col-span-3 md:col-span-1">
+                                    <h4 class="font-medium mb-2">语言分布</h4>
+                                    <div class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+                                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                            <thead class="bg-gray-50 dark:bg-gray-800">
+                                                <tr>
+                                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">语言</th>
+                                                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">数量</th>
+                                                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">比例</th>
+                                                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">目标比例</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="result-language-table" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                
+                                <!-- 数据格式分布结果表格 -->
+                                <div class="col-span-3 md:col-span-1">
+                                    <h4 class="font-medium mb-2">数据格式分布</h4>
+                                    <div class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+                                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                            <thead class="bg-gray-50 dark:bg-gray-800">
+                                                <tr>
+                                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">格式</th>
+                                                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">数量</th>
+                                                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">比例</th>
+                                                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">目标比例</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="result-format-table" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                
+                                <!-- 内容体裁分布结果表格 -->
+                                <div class="col-span-3 md:col-span-1">
+                                    <h4 class="font-medium mb-2">内容体裁分布</h4>
+                                    <div class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+                                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                            <thead class="bg-gray-50 dark:bg-gray-800">
+                                                <tr>
+                                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">体裁</th>
+                                                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">数量</th>
+                                                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">比例</th>
+                                                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">目标比例</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="result-genre-table" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 结果图表视图 -->
+                        <div id="result-chart-view" class="hidden">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <!-- 语言分布结果图表 -->
+                                <div>
+                                    <h4 class="font-medium mb-2">语言分布</h4>
+                                    <div class="h-60 bg-white dark:bg-gray-800 rounded-lg p-3">
+                                        <canvas id="result-language-chart"></canvas>
+                                    </div>
+                                </div>
+                                
+                                <!-- 数据格式分布结果图表 -->
+                                <div>
+                                    <h4 class="font-medium mb-2">数据格式分布</h4>
+                                    <div class="h-60 bg-white dark:bg-gray-800 rounded-lg p-3">
+                                        <canvas id="result-format-chart"></canvas>
+                                    </div>
+                                </div>
+                                
+                                <!-- 内容体裁分布结果图表 -->
+                                <div class="md:col-span-2">
+                                    <h4 class="font-medium mb-2">内容体裁分布</h4>
+                                    <div class="h-60 bg-white dark:bg-gray-800 rounded-lg p-3">
+                                        <canvas id="result-genre-chart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 比例对比面板 -->
+                    <div id="panel-comparison" class="hidden h-[600px] overflow-y-auto custom-scrollbar">
+                        <h3 class="text-lg font-medium mb-4">目标比例与实际比例对比</h3>
+                        
+                        <!-- 语言比例对比 -->
+                        <div class="mb-8">
+                            <h4 class="font-medium mb-3">语言比例对比</h4>
+                            <div class="h-60 bg-white dark:bg-gray-800 rounded-lg p-3">
+                                <canvas id="language-comparison-chart"></canvas>
+                            </div>
+                        </div>
+                        
+                        <!-- 格式比例对比 -->
+                        <div class="mb-8">
+                            <h4 class="font-medium mb-3">格式比例对比</h4>
+                            <div class="h-60 bg-white dark:bg-gray-800 rounded-lg p-3">
+                                <canvas id="format-comparison-chart"></canvas>
+                            </div>
+                        </div>
+                        
+                        <!-- 体裁比例对比 -->
+                        <div>
+                            <h4 class="font-medium mb-3">体裁比例对比</h4>
+                            <div class="h-60 bg-white dark:bg-gray-800 rounded-lg p-3">
+                                <canvas id="genre-comparison-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 数据预览面板 -->
+                    <div id="panel-data" class="hidden h-[600px] overflow-y-auto custom-scrollbar">
+                        <h3 class="text-lg font-medium mb-4">抽样数据预览</h3>
+                        <table id="sample-preview-table" class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg">
+                            <!-- 动态生成的抽样数据预览表将在这里显示 -->
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 历史记录详情 -->
+                <div id="history-detail" class="hidden">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-medium flex items-center">
+                            <button id="back-from-history" class="mr-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                                </svg>
+                            </button>
+                            历史记录详情
+                        </h3>
+                        <span id="history-timestamp" class="text-sm text-gray-500 dark:text-gray-400"></span>
+                    </div>
+
+                    <div class="mb-4 p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">文件名</p>
+                                <p id="history-filename" class="text-sm font-medium"></p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">抽样数量</p>
+                                <p id="history-count" class="text-sm font-medium"></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 历史记录标签页 -->
+                    <div class="border-b border-gray-200 dark:border-gray-700 mb-4">
+                        <ul class="flex -mb-px" role="tablist">
+                            <li class="mr-4">
+                                <button id="history-tab-language" class="py-2 px-1 tab-active" role="tab" aria-selected="true">语言分布</button>
+                            </li>
+                            <li class="mr-4">
+                                <button id="history-tab-format" class="py-2 px-1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300" role="tab" aria-selected="false">格式分布</button>
+                            </li>
+                            <li>
+                                <button id="history-tab-genre" class="py-2 px-1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300" role="tab" aria-selected="false">体裁分布</button>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- 历史记录面板 -->
+                    <div id="history-panel-language" class="h-[450px] overflow-y-auto custom-scrollbar">
+                        <div class="h-60 bg-white dark:bg-gray-800 rounded-lg p-3 mb-4">
+                            <canvas id="history-language-chart"></canvas>
+                        </div>
+                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg">
+                            <thead class="bg-gray-50 dark:bg-gray-800">
+                                <tr>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">语言</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">数量</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">比例</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">目标比例</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-language-table" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700"></tbody>
+                        </table>
+                    </div>
+
+                    <div id="history-panel-format" class="hidden h-[450px] overflow-y-auto custom-scrollbar">
+                        <div class="h-60 bg-white dark:bg-gray-800 rounded-lg p-3 mb-4">
+                            <canvas id="history-format-chart"></canvas>
+                        </div>
+                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg">
+                            <thead class="bg-gray-50 dark:bg-gray-800">
+                                <tr>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">格式</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">数量</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">比例</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">目标比例</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-format-table" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700"></tbody>
+                        </table>
+                    </div>
+
+                    <div id="history-panel-genre" class="hidden h-[450px] overflow-y-auto custom-scrollbar">
+                        <div class="h-60 bg-white dark:bg-gray-800 rounded-lg p-3 mb-4">
+                            <canvas id="history-genre-chart"></canvas>
+                        </div>
+                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg">
+                            <thead class="bg-gray-50 dark:bg-gray-800">
+                                <tr>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">体裁</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">数量</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">比例</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">目标比例</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-genre-table" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 成功提示框 -->
+        <div id="success-message" class="hidden fixed bottom-4 right-4 max-w-md bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded shadow-lg">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-green-500" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                    </svg>
+                </div>
+                <div class="ml-3">
+                    <p id="success-text" class="text-sm"></p>
+                </div>
+                <div class="ml-auto pl-3">
+                    <div class="-mx-1.5 -my-1.5">
+                        <button id="dismiss-success" class="inline-flex rounded-md p-1.5 text-green-500 hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                            <svg class="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 错误提示框 -->
+        <div id="error-message" class="hidden fixed bottom-4 right-4 max-w-md bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-lg">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                    </svg>
+                </div>
+                <div class="ml-3">
+                    <p id="error-text" class="text-sm"></p>
+                </div>
+                <div class="ml-auto pl-3">
+                    <div class="-mx-1.5 -my-1.5">
+                        <button id="dismiss-error" class="inline-flex rounded-md p-1.5 text-red-500 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                            <svg class="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 页脚 -->
+        <div class="mt-8 text-center text-sm text-gray-500 dark:text-gray-400">
+            <p>评了么 - 强化版数据抽样工具 © 2023</p>
+        </div>
+    </div>
+
+    <script>
+        // 暗黑模式支持
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add('dark');
+        }
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+            if (event.matches) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        });
+
+        // 应用状态
+        const appState = {
+            currentFile: null,
+            parsedData: null,
+            originalData: null,
+            headers: null,
+            mappings: {
+                language: null,
+                format: null,
+                genre: null
+            },
+            analysis: {
+                languages: {},
+                formats: {},
+                genres: {},
+                crossDistribution: {},
+                totalRecords: 0
+            },
+            targetSettings: {
+                totalSamples: 300,
+                languageProportions: {},
+                formatProportions: {},
+                genreProportions: {}
+            },
+            samplingResult: {
+                data: null,
+                analysis: null,
+                missingCombinations: []
+            },
+            charts: {
+                language: null,
+                format: null,
+                genre: null,
+                resultLanguage: null,
+                resultFormat: null,
+                resultGenre: null,
+                languageComparison: null,
+                formatComparison: null,
+                genreComparison: null,
+                historyLanguage: null,
+                historyFormat: null,
+                historyGenre: null
+            },
+            history: [],
+            debug: true // 设置为true开启调试模式
+        };
+        
+        // 内存存储代替 localStorage
+        const memoryStorage = {
+            data: {},
+            getItem: function(key) {
+                return this.data[key] || null;
+            },
+            setItem: function(key, value) {
+                this.data[key] = value;
+            },
+            removeItem: function(key) {
+                delete this.data[key];
+            },
+            clear: function() {
+                this.data = {};
+            }
+        };
+
+        // 显示成功消息
+        function showSuccess(message) {
+            const successEl = document.getElementById('success-message');
+            document.getElementById('success-text').textContent = message;
+            successEl.classList.remove('hidden');
+            
+            // 添加日志
+            addLog(message, 'success');
+            
+            // 自动隐藏
+            setTimeout(() => {
+                successEl.classList.add('hidden');
+            }, 5000);
+        }
+
+        // 历史记录管理
+        const historyManager = {
+            MAX_HISTORY: 3,
+            
+            // 从内存存储加载历史记录
+            loadHistory: function() {
+                try {
+                    const savedHistory = memoryStorage.getItem('samplingHistory');
+                    if (savedHistory) {
+                        appState.history = JSON.parse(savedHistory);
+                        this.updateHistoryUI();
+                    }
+                } catch (error) {
+                    console.error('加载历史记录失败:', error);
+                    // 加载失败则重置历史记录
+                    appState.history = [];
+                    memoryStorage.removeItem('samplingHistory');
+                }
+            },
+            
+            // 保存历史记录到内存存储
+            saveHistory: function() {
+                try {
+                    memoryStorage.setItem('samplingHistory', JSON.stringify(appState.history));
+                } catch (error) {
+                    console.error('保存历史记录失败:', error);
+                    showError('保存历史记录失败');
+                }
+            },
+            
+            // 将当前抽样结果添加到历史记录
+            addToHistory: function() {
+                if (!appState.currentFile || !appState.samplingResult.data) {
+                    return;
+                }
+                
+                const historyItem = {
+                    timestamp: new Date().toISOString(),
+                    filename: appState.currentFile.name,
+                    sampleCount: appState.samplingResult.data.length,
+                    totalCount: appState.analysis.totalRecords,
+                    targetSettings: JSON.parse(JSON.stringify(appState.targetSettings)),
+                    analysis: {
+                        languages: JSON.parse(JSON.stringify(appState.samplingResult.analysis.languages)),
+                        formats: JSON.parse(JSON.stringify(appState.samplingResult.analysis.formats)),
+                        genres: JSON.parse(JSON.stringify(appState.samplingResult.analysis.genres)),
+                        totalRecords: appState.samplingResult.analysis.totalRecords
+                    },
+                    missingCombinations: JSON.parse(JSON.stringify(appState.samplingResult.missingCombinations))
+                };
+                
+                // 添加到历史记录最前面
+                appState.history.unshift(historyItem);
+                
+                // 保持历史记录最多MAX_HISTORY条
+                if (appState.history.length > this.MAX_HISTORY) {
+                    appState.history = appState.history.slice(0, this.MAX_HISTORY);
+                }
+                
+                // 保存到内存存储
+                this.saveHistory();
+                
+                // 更新UI
+                this.updateHistoryUI();
+                
+                addLog('已将当前抽样结果添加到历史记录');
+            },
+            
+            // 清空历史记录
+            clearHistory: function() {
+                appState.history = [];
+                memoryStorage.removeItem('samplingHistory');
+                this.updateHistoryUI();
+                addLog('历史记录已清空');
+            },
+            
+            // 更新历史记录UI
+            updateHistoryUI: function() {
+                const historyList = document.getElementById('history-list');
+                const noHistory = document.getElementById('no-history');
+                
+                if (appState.history.length === 0) {
+                    historyList.classList.add('hidden');
+                    noHistory.classList.remove('hidden');
+                    return;
+                }
+                
+                historyList.innerHTML = '';
+                historyList.classList.remove('hidden');
+                noHistory.classList.add('hidden');
+                
+                appState.history.forEach((item, index) => {
+                    const date = new Date(item.timestamp);
+                    const formattedDate = `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+                    
+                    const historyCard = document.createElement('div');
+                    historyCard.className = 'bg-gray-100 dark:bg-gray-700 rounded-lg p-3 history-card';
+                    historyCard.innerHTML = `
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="font-medium text-sm">${item.filename}</p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                    抽样: ${item.sampleCount}/${item.totalCount} 条
+                                </p>
+                            </div>
+                            <span class="text-xs text-gray-500 dark:text-gray-400">${formattedDate}</span>
+                        </div>
+                        <button class="view-history-btn mt-2 text-xs text-primary hover:underline" data-index="${index}">查看详情</button>
+                    `;
+                    
+                    historyList.appendChild(historyCard);
+                });
+                
+                // 添加查看历史记录详情事件
+                document.querySelectorAll('.view-history-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const index = parseInt(btn.getAttribute('data-index'));
+                        this.showHistoryDetail(index);
+                    });
+                });
+            },
+            
+            // 显示历史记录详情
+            showHistoryDetail: function(index) {
+                if (index < 0 || index >= appState.history.length) {
+                    return;
+                }
+                
+                const historyItem = appState.history[index];
+                
+                // 更新历史记录详情页面
+                document.getElementById('history-timestamp').textContent = new Date(historyItem.timestamp).toLocaleString();
+                document.getElementById('history-filename').textContent = historyItem.filename;
+                document.getElementById('history-count').textContent = `${historyItem.sampleCount}/${historyItem.totalCount} 条`;
+                
+                // 更新语言分布表格
+                const languageTable = document.getElementById('history-language-table');
+                languageTable.innerHTML = '';
+                Object.entries(historyItem.analysis.languages).sort((a, b) => b[1] - a[1]).forEach(([lang, count]) => {
+                    const percentage = (count / historyItem.analysis.totalRecords * 100).toFixed(2);
+                    const targetPercentage = (historyItem.targetSettings.languageProportions[lang] * 100).toFixed(2);
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="px-3 py-2 whitespace-nowrap text-sm">${lang}</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${count}</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${percentage}%</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${targetPercentage}%</td>
+                    `;
+                    languageTable.appendChild(row);
+                });
+                
+                // 更新格式分布表格
+                const formatTable = document.getElementById('history-format-table');
+                formatTable.innerHTML = '';
+                Object.entries(historyItem.analysis.formats).sort((a, b) => b[1] - a[1]).forEach(([format, count]) => {
+                    const percentage = (count / historyItem.analysis.totalRecords * 100).toFixed(2);
+                    const targetPercentage = (historyItem.targetSettings.formatProportions[format] * 100).toFixed(2);
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="px-3 py-2 whitespace-nowrap text-sm">${format}</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${count}</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${percentage}%</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${targetPercentage}%</td>
+                    `;
+                    formatTable.appendChild(row);
+                });
+                
+                // 更新体裁分布表格
+                const genreTable = document.getElementById('history-genre-table');
+                genreTable.innerHTML = '';
+                Object.entries(historyItem.analysis.genres).sort((a, b) => b[1] - a[1]).forEach(([genre, count]) => {
+                    const percentage = (count / historyItem.analysis.totalRecords * 100).toFixed(2);
+                    const targetPercentage = (historyItem.targetSettings.genreProportions[genre] * 100).toFixed(2);
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="px-3 py-2 whitespace-nowrap text-sm">${genre}</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${count}</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${percentage}%</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${targetPercentage}%</td>
+                    `;
+                    genreTable.appendChild(row);
+                });
+                
+                // 创建历史图表
+                this.createHistoryCharts(historyItem);
+                
+                // 显示历史记录详情页面
+                document.getElementById('preview-placeholder').classList.add('hidden');
+                document.getElementById('parse-preview').classList.add('hidden');
+                document.getElementById('analysis-results').classList.add('hidden');
+                document.getElementById('sample-results').classList.add('hidden');
+                document.getElementById('history-detail').classList.remove('hidden');
+            },
+            
+            // 创建历史记录图表
+            createHistoryCharts: function(historyItem) {
+                const isDarkMode = document.documentElement.classList.contains('dark');
+                const textColor = isDarkMode ? '#E5E7EB' : '#1F2937';
+                
+                // 语言分布图表
+                const languageCtx = document.getElementById('history-language-chart').getContext('2d');
+                const { languages } = historyItem.analysis;
+                const languageLabels = Object.keys(languages);
+                const languageData = Object.values(languages);
+                const languageTargets = languageLabels.map(lang => 
+                    historyItem.targetSettings.languageProportions[lang] * historyItem.analysis.totalRecords);
+                
+                if (appState.charts.historyLanguage) {
+                    appState.charts.historyLanguage.destroy();
+                }
+                
+                appState.charts.historyLanguage = new Chart(languageCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: languageLabels,
+                        datasets: [
+                            {
+                                label: '实际数量',
+                                data: languageData,
+                                backgroundColor: '#5D5CDE',
+                                borderColor: '#4F46E5',
+                                borderWidth: 1
+                            },
+                            {
+                                label: '目标数量',
+                                data: languageTargets,
+                                backgroundColor: '#10B981',
+                                borderColor: '#059669',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    color: textColor
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: {
+                                    display: false
+                                },
+                                ticks: {
+                                    color: textColor
+                                }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                grid: {
+                                    color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                                },
+                                ticks: {
+                                    color: textColor
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                // 格式分布图表
+                const formatCtx = document.getElementById('history-format-chart').getContext('2d');
+                const { formats } = historyItem.analysis;
+                const formatLabels = Object.keys(formats);
+                const formatData = Object.values(formats);
+                const formatTargets = formatLabels.map(format => 
+                    historyItem.targetSettings.formatProportions[format] * historyItem.analysis.totalRecords);
+                
+                if (appState.charts.historyFormat) {
+                    appState.charts.historyFormat.destroy();
+                }
+                
+                appState.charts.historyFormat = new Chart(formatCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: formatLabels,
+                        datasets: [
+                            {
+                                label: '实际数量',
+                                data: formatData,
+                                backgroundColor: '#3B82F6',
+                                borderColor: '#2563EB',
+                                borderWidth: 1
+                            },
+                            {
+                                label: '目标数量',
+                                data: formatTargets,
+                                backgroundColor: '#10B981',
+                                borderColor: '#059669',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    color: textColor
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: {
+                                    display: false
+                                },
+                                ticks: {
+                                    color: textColor
+                                }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                grid: {
+                                    color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                                },
+                                ticks: {
+                                    color: textColor
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                // 体裁分布图表
+                const genreCtx = document.getElementById('history-genre-chart').getContext('2d');
+                const { genres } = historyItem.analysis;
+                const genreLabels = Object.keys(genres);
+                const genreData = Object.values(genres);
+                const genreTargets = genreLabels.map(genre => 
+                    historyItem.targetSettings.genreProportions[genre] * historyItem.analysis.totalRecords);
+                
+                if (appState.charts.historyGenre) {
+                    appState.charts.historyGenre.destroy();
+                }
+                
+                appState.charts.historyGenre = new Chart(genreCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: genreLabels,
+                        datasets: [
+                            {
+                                label: '实际数量',
+                                data: genreData,
+                                backgroundColor: '#5D5CDE',
+                                borderColor: '#4F46E5',
+                                borderWidth: 1
+                            },
+                            {
+                                label: '目标数量',
+                                data: genreTargets,
+                                backgroundColor: '#10B981',
+                                borderColor: '#059669',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    color: textColor
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: {
+                                    display: false
+                                },
+                                ticks: {
+                                    color: textColor
+                                }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                grid: {
+                                    color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                                },
+                                ticks: {
+                                    color: textColor
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        };
+
+        // 添加日志
+        function addLog(message, type = 'info') {
+            const logContent = document.getElementById('log-content');
+            const logEntry = document.createElement('div');
+            
+            let typeClass = '';
+            switch(type) {
+                case 'error':
+                    typeClass = 'text-red-600 dark:text-red-400';
+                    break;
+                case 'warning':
+                    typeClass = 'text-yellow-600 dark:text-yellow-400';
+                    break;
+                case 'success':
+                    typeClass = 'text-green-600 dark:text-green-400';
+                    break;
+                default:
+                    typeClass = 'text-gray-800 dark:text-gray-300';
+            }
+            
+            const timestamp = new Date().toLocaleTimeString();
+            logEntry.className = typeClass;
+            logEntry.innerHTML = `<span class="text-gray-500 dark:text-gray-500">[${timestamp}]</span> ${message}`;
+            
+            logContent.appendChild(logEntry);
+            
+            // 滚动到最新日志
+            const logContainer = document.getElementById('log-container');
+            logContainer.scrollTop = logContainer.scrollHeight;
+            
+            // 同时输出到控制台
+            if (type === 'error') {
+                console.error(message);
+            } else if (type === 'warning') {
+                console.warn(message);
+            } else {
+                console.log(message);
+            }
+        }
+
+        // 显示错误消息
+        function showError(message) {
+            const errorEl = document.getElementById('error-message');
+            document.getElementById('error-text').textContent = message;
+            errorEl.classList.remove('hidden');
+            
+            // 添加日志
+            addLog(message, 'error');
+            
+            // 自动隐藏
+            setTimeout(() => {
+                errorEl.classList.add('hidden');
+            }, 8000);
+        }
+
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // 显示加载状态
+        function showLoading(message = "正在处理数据...") {
+            document.querySelectorAll('.step-content').forEach(el => el.classList.add('hidden'));
+            const loadingEl = document.getElementById('loading');
+            document.getElementById('loading-text').textContent = message;
+            loadingEl.classList.remove('hidden');
+        }
+
+        // 隐藏加载状态
+        function hideLoading() {
+            document.getElementById('loading').classList.add('hidden');
+        }
+
+        function goToStep(stepNumber) {
+            // 隐藏所有步骤
+            document.querySelectorAll('.step-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('[id^="step"]').forEach(el => {
+                if (el.id === `step${stepNumber}`) {
+                    el.classList.remove('hidden');
+                }
+            });
+            
+            // 隐藏右侧所有内容
+            document.getElementById('preview-placeholder').classList.add('hidden');
+            document.getElementById('parse-preview').classList.add('hidden');
+            document.getElementById('analysis-results').classList.add('hidden');
+            document.getElementById('sample-results').classList.add('hidden');
+            document.getElementById('history-detail').classList.add('hidden');
+            
+            // 显示对应的右侧内容
+            if (stepNumber === 1) {
+                if (appState.parsedData) {
+                    document.getElementById('parse-preview').classList.remove('hidden');
+                } else {
+                    document.getElementById('preview-placeholder').classList.remove('hidden');
+                }
+            } else if (stepNumber === 2) {
+                document.getElementById('parse-preview').classList.remove('hidden');
+            } else if (stepNumber === 3) {
+                document.getElementById('analysis-results').classList.remove('hidden');
+            } else if (stepNumber === 4) {
+                document.getElementById('sample-results').classList.remove('hidden');
+                
+                // 确保显示基本结果标签页
+                document.getElementById('tab-basic').click();
+            }
+            
+            // 更新步骤指示器
+            for (let i = 1; i <= 4; i++) {
+                const indicator = document.getElementById(`step${i}-indicator`);
+                if (i === stepNumber) {
+                    indicator.classList.remove('bg-gray-200', 'dark:bg-gray-700', 'text-gray-500', 'dark:text-gray-400');
+                    indicator.classList.add('bg-primary', 'text-white');
+                } else if (i < stepNumber) {
+                    indicator.classList.remove('bg-gray-200', 'dark:bg-gray-700', 'text-gray-500', 'dark:text-gray-400');
+                    indicator.classList.add('bg-green-500', 'text-white');
+                    indicator.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>';
+                } else {
+                    indicator.classList.remove('bg-primary', 'bg-green-500', 'text-white');
+                    indicator.classList.add('bg-gray-200', 'dark:bg-gray-700', 'text-gray-500', 'dark:text-gray-400');
+                    indicator.textContent = i;
+                }
+            }
+            
+            addLog(`进入步骤 ${stepNumber}`);
+        }
+
+        function resetApp() {
+            // 重置状态
+            appState.currentFile = null;
+            appState.parsedData = null;
+            appState.originalData = null;
+            appState.headers = null;
+            appState.mappings = {
+                language: null,
+                format: null,
+                genre: null
+            };
+            appState.analysis = {
+                languages: {},
+                formats: {},
+                genres: {},
+                crossDistribution: {},
+                totalRecords: 0
+            };
+            appState.targetSettings = {
+                totalSamples: 300,
+                languageProportions: {},
+                formatProportions: {},
+                genreProportions: {}
+            };
+            appState.samplingResult = {
+                data: null,
+                analysis: null,
+                missingCombinations: []
+            };
+            
+            // 重置UI
+            document.getElementById('file-input').value = '';
+            document.getElementById('file-info').classList.add('hidden');
+            
+            // 清空表格和图表
+            document.getElementById('language-table').innerHTML = '';
+            document.getElementById('format-table').innerHTML = '';
+            document.getElementById('genre-table').innerHTML = '';
+            document.getElementById('cross-table').innerHTML = '';
+            
+            // 清空结果表格
+            document.getElementById('result-language-table').innerHTML = '';
+            document.getElementById('result-format-table').innerHTML = '';
+            document.getElementById('result-genre-table').innerHTML = '';
+            document.getElementById('sample-preview-table').innerHTML = '';
+            
+            // 重置解析预览
+            document.getElementById('header-row').innerHTML = '';
+            document.getElementById('data-rows').innerHTML = '';
+            
+            // 销毁图表
+            Object.keys(appState.charts).forEach(key => {
+                if (appState.charts[key]) {
+                    appState.charts[key].destroy();
+                    appState.charts[key] = null;
+                }
+            });
+            
+            // 返回步骤1
+            goToStep(1);
+            
+            // 显示初始占位符
+            document.getElementById('preview-placeholder').classList.remove('hidden');
+            document.getElementById('parse-preview').classList.add('hidden');
+            document.getElementById('analysis-results').classList.add('hidden');
+            document.getElementById('sample-results').classList.add('hidden');
+            document.getElementById('history-detail').classList.add('hidden');
+            
+            addLog('应用已重置');
+        }
+
+        // 检查文件
+        function checkFile(file) {
+            addLog(`开始检查文件: ${file.name}`);
+            
+            // 检查文件类型
+            const fileExt = file.name.split('.').pop().toLowerCase();
+            if (!['xlsx', 'xls', 'csv'].includes(fileExt)) {
+                throw new Error('不支持的文件类型，仅接受.xlsx, .xls, .csv格式');
+            }
+            
+            // 检查文件大小
+            if (file.size > 10 * 1024 * 1024) {
+                addLog(`警告: 文件大小为 ${formatFileSize(file.size)}，较大的文件可能会导致浏览器运行缓慢`, 'warning');
+            } else {
+                addLog(`文件大小: ${formatFileSize(file.size)}`);
+            }
+            
+            // 检查文件名是否包含特殊字符
+            if (/[^a-zA-Z0-9\-_\u4e00-\u9fa5\.\(\) ]/g.test(file.name)) {
+                addLog('警告: 文件名包含特殊字符，可能会导致解析问题', 'warning');
+            }
+            
+            addLog(`文件检查完成: ${file.name}`, 'success');
+            return fileExt;
+        }
+
+        // 使用XLSX.js解析Excel文件
+        async function parseExcelWithXLSX(file) {
+            return new Promise((resolve, reject) => {
+                addLog('使用XLSX.js解析Excel文件');
+                const reader = new FileReader();
+                
+                reader.onload = (e) => {
+                    try {
+                        addLog('文件读取完成，开始解析');
+                        const data = new Uint8Array(e.target.result);
+                        addLog(`文件数据大小: ${formatFileSize(data.length)}`);
+                        
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        addLog(`解析到 ${workbook.SheetNames.length} 个工作表: ${workbook.SheetNames.join(', ')}`);
+                        
+                        // 使用第一个工作表
+                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                        if (!firstSheet) {
+                            throw new Error('工作表为空或无法读取');
+                        }
+                        
+                        addLog('开始转换工作表到JSON');
+                        // 转换工作表到JSON
+                        const jsonData = XLSX.utils.sheet_to_json(firstSheet, { 
+                            header: 1, 
+                            defval: '', 
+                            blankrows: false 
+                        });
+                        
+                        if (!jsonData || jsonData.length === 0) {
+                            throw new Error('解析结果为空，文件可能没有数据');
+                        }
+                        
+                        addLog(`成功解析 ${jsonData.length} 行数据`, 'success');
+                        
+                        // 提取表头和数据行
+                        const headers = jsonData[0].map(h => String(h || ''));
+                        const rows = jsonData.slice(1);
+                        
+                        addLog(`解析到 ${headers.length} 列和 ${rows.length} 行数据`);
+                        resolve({ headers, rows });
+                    } catch (error) {
+                        addLog(`解析过程中出错: ${error.message}`, 'error');
+                        reject(error);
+                    }
+                };
+                
+                reader.onerror = (error) => {
+                    addLog(`读取文件失败: ${error}`, 'error');
+                    reject(new Error('读取文件失败'));
+                };
+                
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        // 使用原生方法解析CSV文件
+        async function parseCSV(file) {
+            return new Promise((resolve, reject) => {
+                addLog('使用原生方法解析CSV文件');
+                const reader = new FileReader();
+                
+                reader.onload = (e) => {
+                    try {
+                        addLog('文件读取完成，开始解析CSV');
+                        const text = e.target.result;
+                        addLog(`CSV文本长度: ${text.length} 字符`);
+                        
+                        // 按行分割
+                        let lines = text.split(/\r\n|\n|\r/);
+                        lines = lines.filter(line => line.trim() !== '');
+                        
+                        if (lines.length === 0) {
+                            throw new Error('CSV文件为空或格式不正确');
+                        }
+                        
+                        addLog(`检测到 ${lines.length} 行数据`);
+                        
+                        // 检测分隔符
+                        const firstLine = lines[0];
+                        let delimiter = ',';
+                        if (firstLine.indexOf('\t') > -1) {
+                            delimiter = '\t';
+                            addLog('检测到制表符分隔的CSV');
+                        } else if (firstLine.indexOf(';') > -1 && (firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length) {
+                            delimiter = ';';
+                            addLog('检测到分号分隔的CSV');
+                        } else {
+                            addLog('检测到逗号分隔的CSV');
+                        }
+                        
+                        // 解析表头和数据
+                        const headers = lines[0].split(delimiter).map(h => h.trim().replace(/^"|"$/g, ''));
+                        const rows = [];
+                        
+                        for (let i = 1; i < lines.length; i++) {
+                            // 处理引号内的分隔符
+                            const row = [];
+                            let inQuotes = false;
+                            let currentValue = '';
+                            
+                            for (let char of lines[i]) {
+                                if (char === '"') {
+                                    inQuotes = !inQuotes;
+                                } else if (char === delimiter && !inQuotes) {
+                                    row.push(currentValue.trim());
+                                    currentValue = '';
+                                } else {
+                                    currentValue += char;
+                                }
+                            }
+                            
+                            // 添加最后一个值
+                            row.push(currentValue.trim());
+                            
+                            if (row.length > 0) {
+                                rows.push(row);
+                            }
+                        }
+                        
+                        addLog(`成功解析 ${headers.length} 列和 ${rows.length} 行数据`, 'success');
+                        resolve({ headers, rows });
+                    } catch (error) {
+                        addLog(`解析CSV过程中出错: ${error.message}`, 'error');
+                        reject(error);
+                    }
+                };
+                
+                reader.onerror = (error) => {
+                    addLog(`读取CSV文件失败: ${error}`, 'error');
+                    reject(new Error('读取CSV文件失败'));
+                };
+                
+                reader.readAsText(file);
+            });
+        }
+
+        // 使用流式方法解析大文件
+        async function parseWithStream(file) {
+            return new Promise((resolve, reject) => {
+                addLog('使用流式方法解析文件');
+                
+                if (file.name.toLowerCase().endsWith('.csv')) {
+                    addLog('检测到CSV文件，使用流式CSV解析');
+                    
+                    let headers = [];
+                    const rows = [];
+                    let headersParsed = false;
+                    let buffer = '';
+                    
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const chunk = e.target.result;
+                            buffer += chunk;
+                            
+                            // 按行分割
+                            const lines = buffer.split(/\r\n|\n|\r/);
+                            
+                            // 最后一行可能不完整，保留在buffer中
+                            buffer = lines.pop() || '';
+                            
+                            if (!headersParsed && lines.length > 0) {
+                                headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+                                headersParsed = true;
+                                lines.shift();
+                                addLog(`解析到表头: ${headers.join(', ')}`);
+                            }
+                            
+                            for (const line of lines) {
+                                if (line.trim() === '') continue;
+                                const row = line.split(',').map(cell => cell.trim().replace(/^"|"$/g, ''));
+                                rows.push(row);
+                            }
+                            
+                            // 检查是否还有更多数据
+                            if (reader.result.byteLength < file.size) {
+                                // 继续读取
+                                const nextChunk = file.slice(reader.result.byteLength);
+                                reader.readAsText(nextChunk);
+                            } else {
+                                // 处理缓冲区中最后一行
+                                if (buffer.trim() !== '') {
+                                    const row = buffer.split(',').map(cell => cell.trim().replace(/^"|"$/g, ''));
+                                    rows.push(row);
+                                }
+                                
+                                addLog(`流式解析完成，共 ${headers.length} 列和 ${rows.length} 行数据`, 'success');
+                                resolve({ headers, rows });
+                            }
+                        } catch (error) {
+                            addLog(`流式解析过程中出错: ${error.message}`, 'error');
+                            reject(error);
+                        }
+                    };
+                    
+                    reader.onerror = (error) => {
+                        addLog(`读取文件流失败: ${error}`, 'error');
+                        reject(new Error('读取文件流失败'));
+                    };
+                    
+                    // 开始读取文件的第一个块
+                    const firstChunk = file.slice(0, 64 * 1024); // 读取前64KB
+                    reader.readAsText(firstChunk);
+                } else {
+                    // 对于Excel文件，尝试使用网络请求流式解析
+                    addLog('非CSV文件，尝试使用XLSX Worker解析');
+                    
+                    // 创建一个文件的URL
+                    const fileURL = URL.createObjectURL(file);
+                    
+                    // 使用fetch API加载文件
+                    fetch(fileURL)
+                        .then(response => response.arrayBuffer())
+                        .then(buffer => {
+                            addLog('文件下载完成，开始解析');
+                            try {
+                                const data = new Uint8Array(buffer);
+                                const workbook = XLSX.read(data, { type: 'array' });
+                                
+                                if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
+                                    throw new Error('无法解析Excel工作簿');
+                                }
+                                
+                                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                                if (!firstSheet) {
+                                    throw new Error('无法读取工作表');
+                                }
+                                
+                                // 转换为JSON
+                                const jsonData = XLSX.utils.sheet_to_json(firstSheet, { 
+                                    header: 1, 
+                                    defval: '', 
+                                    blankrows: false 
+                                });
+                                
+                                if (!jsonData || jsonData.length === 0) {
+                                    throw new Error('解析结果为空');
+                                }
+                                
+                                // 提取表头和数据行
+                                const headers = jsonData[0].map(h => String(h || ''));
+                                const rows = jsonData.slice(1);
+                                
+                                addLog(`流式解析完成，共 ${headers.length} 列和 ${rows.length} 行数据`, 'success');
+                                resolve({ headers, rows });
+                            } catch (error) {
+                                addLog(`流式解析Excel失败: ${error.message}`, 'error');
+                                reject(error);
+                            } finally {
+                                // 释放URL对象
+                                URL.revokeObjectURL(fileURL);
+                            }
+                        })
+                        .catch(error => {
+                            addLog(`获取文件数据失败: ${error.message}`, 'error');
+                            URL.revokeObjectURL(fileURL);
+                            reject(error);
+                        });
+                }
+            });
+        }
+
+        // 在右侧预览区域显示解析结果
+        function displayParsePreview(data) {
+            const { headers, rows } = data;
+            
+            // 更新统计信息
+            document.getElementById('preview-row-count').textContent = `${rows.length} 行`;
+            document.getElementById('preview-column-count').textContent = `${headers.length} 列`;
+            
+            // 创建表头
+            const headerRow = document.getElementById('header-row');
+            headerRow.innerHTML = '';
+            headers.forEach((header, index) => {
+                const th = document.createElement('th');
+                th.className = 'px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider';
+                th.textContent = header + ` (${getColumnLetter(index)})`;
+                headerRow.appendChild(th);
+            });
+            
+            // 创建数据行
+            const dataRows = document.getElementById('data-rows');
+            dataRows.innerHTML = '';
+            
+            // 仅显示前20行数据
+            const previewRows = rows.slice(0, 20);
+            previewRows.forEach(row => {
+                const tr = document.createElement('tr');
+                
+                // 处理每一列
+                for (let i = 0; i < headers.length; i++) {
+                    const td = document.createElement('td');
+                    td.className = 'px-3 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100';
+                    td.textContent = i < row.length ? row[i] : '';
+                    tr.appendChild(td);
+                }
+                
+                dataRows.appendChild(tr);
+            });
+            
+            // 显示解析预览区域
+            document.getElementById('preview-placeholder').classList.add('hidden');
+            document.getElementById('parse-preview').classList.remove('hidden');
+        }
+
+        // 获取列字母（A, B, C...）
+        function getColumnLetter(index) {
+            let letter = '';
+            index++;
+            
+            while (index > 0) {
+                const remainder = (index - 1) % 26;
+                letter = String.fromCharCode(65 + remainder) + letter;
+                index = Math.floor((index - remainder) / 26);
+            }
+            
+            return letter;
+        }
+
+        // 处理上传的文件
+        function handleFileUpload(file) {
+            // 保存当前文件
+            appState.currentFile = file;
+            
+            // 更新文件信息显示
+            document.getElementById('file-name').textContent = file.name;
+            document.getElementById('file-size').textContent = `大小: ${formatFileSize(file.size)}`;
+            document.getElementById('file-info').classList.remove('hidden');
+            
+            addLog(`文件已选择: ${file.name} (${formatFileSize(file.size)})`);
+            
+            // 根据文件类型自动选择解析方法
+            if (file.name.toLowerCase().endsWith('.csv')) {
+                document.getElementById('method-csv').checked = true;
+                addLog('已自动选择CSV解析方法');
+            } else {
+                document.getElementById('method-xlsx').checked = true;
+                addLog('已自动选择Excel解析方法');
+            }
+            
+            // 如果文件太大，建议使用流式解析
+            if (file.size > 5 * 1024 * 1024) {
+                document.getElementById('method-stream').checked = true;
+                addLog('文件较大，已自动选择流式解析方法', 'warning');
+            }
+        }
+
+        // 解析文件
+        async function parseFile() {
+            if (!appState.currentFile) {
+                showError('请先选择一个文件');
+                return;
+            }
+            
+            showLoading('正在解析文件...');
+            
+            try {
+                addLog(`开始解析文件: ${appState.currentFile.name}`);
+                const fileExt = checkFile(appState.currentFile);
+                
+                // 获取当前选择的解析方法
+                const method = document.querySelector('input[name="parse-method"]:checked').value;
+                
+                // 根据选择的方法和文件类型解析
+                let result;
+                if (method === 'xlsx') {
+                    result = await parseExcelWithXLSX(appState.currentFile);
+                } else if (method === 'csv') {
+                    if (fileExt !== 'csv') {
+                        addLog('警告: 非CSV文件使用CSV解析方法可能会失败', 'warning');
+                    }
+                    result = await parseCSV(appState.currentFile);
+                } else if (method === 'stream') {
+                    result = await parseWithStream(appState.currentFile);
+                }
+                
+                if (!result || !result.headers || !result.rows || result.rows.length === 0) {
+                    throw new Error('解析结果无效或为空');
+                }
+                
+                // 保存解析结果
+                appState.parsedData = result;
+                appState.originalData = { headers: result.headers, rows: result.rows };
+                appState.headers = result.headers;
+                
+                // 显示结果
+                displayParsePreview(result);
+                showSuccess('文件解析成功，请检查字段映射是否正确，然后点击"分析数据"按钮继续');
+                
+                // 准备进入下一步
+                goToStep(2);
+                updateColumnSelectors(result.headers);
+                
+                // 提示用户点击分析按钮 - 添加脉冲效果
+                const analyzeBtn = document.getElementById('analyze-btn');
+                analyzeBtn.classList.add('attention-pulse');
+                setTimeout(() => {
+                    analyzeBtn.classList.remove('attention-pulse');
+                }, 10000);  // 10秒后取消脉冲效果
+            } catch (error) {
+                hideLoading();
+                showError(`解析失败: ${error.message}`);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 更新列选择器
+        function updateColumnSelectors(headers) {
+            try {
+                const languageSelect = document.getElementById('language-column');
+                const formatSelect = document.getElementById('format-column');
+                const genreSelect = document.getElementById('genre-column');
+                
+                // 清空现有选项
+                languageSelect.innerHTML = '<option value="">选择列...</option>';
+                formatSelect.innerHTML = '<option value="">选择列...</option>';
+                genreSelect.innerHTML = '<option value="">选择列...</option>';
+                
+                // 添加列选项
+                headers.forEach((header, index) => {
+                    const optionText = `${header} (${getColumnLetter(index)})`;
+                    
+                    const langOption = document.createElement('option');
+                    langOption.value = index;
+                    langOption.textContent = optionText;
+                    languageSelect.appendChild(langOption);
+                    
+                    const formatOption = document.createElement('option');
+                    formatOption.value = index;
+                    formatOption.textContent = optionText;
+                    formatSelect.appendChild(formatOption);
+                    
+                    const genreOption = document.createElement('option');
+                    genreOption.value = index;
+                    genreOption.textContent = optionText;
+                    genreSelect.appendChild(genreOption);
+                });
+                
+                // 尝试根据例子自动选择列
+                headers.forEach((header, index) => {
+                    const headerLower = header.toString().toLowerCase();
+                    
+                    // 自动选择语言列
+                    if (headerLower.includes('语言') || headerLower.includes('language')) {
+                        languageSelect.value = index;
+                    }
+                    
+                    // 自动选择格式列
+                    if (headerLower.includes('格式') || headerLower.includes('format')) {
+                        formatSelect.value = index;
+                    }
+                    
+                    // 自动选择体裁列
+                    if (headerLower.includes('体裁') || headerLower.includes('genre')) {
+                        genreSelect.value = index;
+                    }
+                });
+                
+                // 尝试根据示例中的特定列位置选择
+                // 示例提到G列是内容体裁，L列是数据格式，N列是语言
+                const columnMap = {
+                    'G': 6,  // G列对应索引6（从0开始计数）
+                    'L': 11, // L列对应索引11
+                    'N': 13  // N列对应索引13
+                };
+                
+                // 确保在数组范围内
+                if (headers.length > columnMap['G']) {
+                    genreSelect.value = columnMap['G'];
+                }
+                
+                if (headers.length > columnMap['L']) {
+                    formatSelect.value = columnMap['L'];
+                }
+                
+                if (headers.length > columnMap['N']) {
+                    languageSelect.value = columnMap['N'];
+                }
+                
+                addLog('自动映射字段完成');
+                
+                // 显示引导指南
+                document.getElementById('mapping-guide').classList.remove('hidden');
+            } catch (error) {
+                addLog(`更新列选择器时出错: ${error.message}`, 'error');
+                showError('设置列映射失败，请手动选择');
+            }
+        }
+
+        // 分析数据
+        function analyzeData() {
+            try {
+                const { rows } = appState.originalData;
+                const langColIndex = appState.mappings.language;
+                const formatColIndex = appState.mappings.format;
+                const genreColIndex = appState.mappings.genre;
+                
+                // 验证映射是否有效
+                if (langColIndex === null || formatColIndex === null || genreColIndex === null) {
+                    throw new Error('字段映射未完成');
+                }
+                
+                // 验证数据行中是否存在这些索引
+                if (rows.length > 0) {
+                    const sampleRow = rows[0];
+                    if (langColIndex >= sampleRow.length || formatColIndex >= sampleRow.length || genreColIndex >= sampleRow.length) {
+                        throw new Error('选择的列索引超出数据范围');
+                    }
+                }
+                
+                const languages = {};
+                const formats = {};
+                const genres = {};
+                const crossDistribution = {};
+                
+                // 记录有效行数
+                let validRows = 0;
+                
+                rows.forEach(row => {
+                    // 确保行数据包含映射的列
+                    if (row.length <= Math.max(langColIndex, formatColIndex, genreColIndex)) {
+                        if (appState.debug) {
+                            console.warn('数据行长度不足:', row);
+                        }
+                        return; // 跳过数据不完整的行
+                    }
+                    
+                    // 提取数据，确保是字符串并去除空格
+                    const lang = (row[langColIndex]?.toString() || '').trim() || '未知';
+                    const format = (row[formatColIndex]?.toString() || '').trim() || '未知';
+                    const genre = (row[genreColIndex]?.toString() || '').trim() || '未知';
+                    
+                    validRows++;
+                    
+                    // 统计各维度数量
+                    languages[lang] = (languages[lang] || 0) + 1;
+                    formats[format] = (formats[format] || 0) + 1;
+                    genres[genre] = (genres[genre] || 0) + 1;
+                    
+                    // 构建交叉分布
+                    const key = `${lang}|${format}|${genre}`;
+                    crossDistribution[key] = (crossDistribution[key] || 0) + 1;
+                });
+                
+                if (validRows === 0) {
+                    throw new Error('没有找到有效的数据行');
+                }
+                
+                if (appState.debug) {
+                    console.log('分析结果:', {
+                        validRows,
+                        languages,
+                        formats,
+                        genres,
+                        crossDistribution: Object.keys(crossDistribution).length
+                    });
+                }
+                
+                appState.analysis = {
+                    languages,
+                    formats,
+                    genres,
+                    crossDistribution,
+                    totalRecords: validRows
+                };
+                
+                addLog(`数据分析完成: 找到 ${validRows} 行有效数据`, 'success');
+                return appState.analysis;
+            } catch (error) {
+                addLog(`分析数据时出错: ${error.message}`, 'error');
+                throw new Error('分析数据失败: ' + (error.message || '未知错误'));
+            }
+        }
+
+        // 显示数据分析结果
+        function displayAnalysisResults() {
+            const { languages, formats, genres, totalRecords } = appState.analysis;
+            
+            // 更新语言表格
+            const languageTable = document.getElementById('language-table');
+            languageTable.innerHTML = '';
+            Object.entries(languages).sort((a, b) => b[1] - a[1]).forEach(([lang, count]) => {
+                const percentage = (count / totalRecords * 100).toFixed(2);
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-3 py-2 whitespace-nowrap text-sm">${lang}</td>
+                    <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${count}</td>
+                    <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${percentage}%</td>
+                `;
+                languageTable.appendChild(row);
+            });
+            
+            // 更新格式表格
+            const formatTable = document.getElementById('format-table');
+            formatTable.innerHTML = '';
+            Object.entries(formats).sort((a, b) => b[1] - a[1]).forEach(([format, count]) => {
+                const percentage = (count / totalRecords * 100).toFixed(2);
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-3 py-2 whitespace-nowrap text-sm">${format}</td>
+                    <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${count}</td>
+                    <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${percentage}%</td>
+                `;
+                formatTable.appendChild(row);
+            });
+            
+            // 更新体裁表格
+            const genreTable = document.getElementById('genre-table');
+            genreTable.innerHTML = '';
+            Object.entries(genres).sort((a, b) => b[1] - a[1]).forEach(([genre, count]) => {
+                const percentage = (count / totalRecords * 100).toFixed(2);
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-3 py-2 whitespace-nowrap text-sm">${genre}</td>
+                    <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${count}</td>
+                    <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${percentage}%</td>
+                `;
+                genreTable.appendChild(row);
+            });
+            
+            // 创建交叉分布表格
+            createCrossDistributionTable();
+            
+            // 创建图表
+            createAnalysisCharts();
+        }
+
+        // 创建交叉分布表格
+        function createCrossDistributionTable() {
+            const crossTable = document.getElementById('cross-table');
+            crossTable.innerHTML = '';
+            
+            const { languages, formats, genres, crossDistribution } = appState.analysis;
+            
+            // 创建表头
+            const thead = document.createElement('thead');
+            thead.className = 'bg-gray-50 dark:bg-gray-800';
+            const headerRow = document.createElement('tr');
+            
+            // 添加语言、格式列标题
+            headerRow.innerHTML = `
+                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">语言</th>
+                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">格式</th>
+            `;
+            
+            // 添加体裁列标题
+            Object.keys(genres).sort().forEach(genre => {
+                const th = document.createElement('th');
+                th.className = 'px-3 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider';
+                th.textContent = genre;
+                headerRow.appendChild(th);
+            });
+            
+            thead.appendChild(headerRow);
+            crossTable.appendChild(thead);
+            
+            // 创建表格内容
+            const tbody = document.createElement('tbody');
+            tbody.className = 'bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700';
+            
+            // 遍历语言和格式的组合
+            Object.keys(languages).sort().forEach(lang => {
+                Object.keys(formats).sort().forEach(format => {
+                    const row = document.createElement('tr');
+                    
+                    // 添加语言、格式单元格
+                    row.innerHTML = `
+                        <td class="px-3 py-2 whitespace-nowrap text-sm">${lang}</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm">${format}</td>
+                    `;
+                    
+                    // 添加各体裁的数量单元格
+                    Object.keys(genres).sort().forEach(genre => {
+                        const key = `${lang}|${format}|${genre}`;
+                        const count = crossDistribution[key] || 0;
+                        
+                        const td = document.createElement('td');
+                        td.className = 'px-3 py-2 whitespace-nowrap text-sm text-center';
+                        
+                        if (count > 0) {
+                            td.textContent = count;
+                        } else {
+                            td.innerHTML = '<span class="text-red-500">0</span>';
+                        }
+                        
+                        row.appendChild(td);
+                    });
+                    
+                    tbody.appendChild(row);
+                });
+            });
+            
+            crossTable.appendChild(tbody);
+        }
+
+        // 创建分析图表
+        function createAnalysisCharts() {
+            try {
+                const { languages, formats, genres, totalRecords } = appState.analysis;
+                const isDarkMode = document.documentElement.classList.contains('dark');
+                const textColor = isDarkMode ? '#E5E7EB' : '#1F2937';
+                
+                // 语言分布图表
+                const languageCtx = document.getElementById('language-chart').getContext('2d');
+                const languageLabels = Object.keys(languages);
+                const languageData = Object.values(languages);
+                const languagePercentages = languageData.map(count => ((count / totalRecords) * 100).toFixed(2));
+                
+                if (appState.charts.language) {
+                    appState.charts.language.destroy();
+                }
+                
+                appState.charts.language = new Chart(languageCtx, {
+                    type: 'pie',
+                    data: {
+                        labels: languageLabels,
+                        datasets: [{
+                            data: languageData,
+                            backgroundColor: [
+                                '#5D5CDE', '#F59E0B', '#10B981', '#EC4899',
+                                '#8B5CF6', '#EF4444', '#3B82F6', '#14B8A6'
+                            ]
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const index = context.dataIndex;
+                                        return `${context.label}: ${context.raw}（${languagePercentages[index]}%）`;
+                                    }
+                                }
+                            },
+                            legend: {
+                                position: 'right',
+                                labels: {
+                                    color: textColor
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                // 数据格式分布图表
+                const formatCtx = document.getElementById('format-chart').getContext('2d');
+                const formatLabels = Object.keys(formats);
+                const formatData = Object.values(formats);
+                const formatPercentages = formatData.map(count => ((count / totalRecords) * 100).toFixed(2));
+                
+                if (appState.charts.format) {
+                    appState.charts.format.destroy();
+                }
+                
+                appState.charts.format = new Chart(formatCtx, {
+                    type: 'pie',
+                    data: {
+                        labels: formatLabels,
+                        datasets: [{
+                            data: formatData,
+                            backgroundColor: [
+                                '#3B82F6', '#F59E0B', '#10B981', '#EC4899',
+                                '#8B5CF6', '#EF4444', '#5D5CDE', '#14B8A6'
+                            ]
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const index = context.dataIndex;
+                                        return `${context.label}: ${context.raw}（${formatPercentages[index]}%）`;
+                                    }
+                                }
+                            },
+                            legend: {
+                                position: 'right',
+                                labels: {
+                                    color: textColor
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                // 内容体裁分布图表
+                const genreCtx = document.getElementById('genre-chart').getContext('2d');
+                const genreLabels = Object.keys(genres);
+                const genreData = Object.values(genres);
+                const genrePercentages = genreData.map(count => ((count / totalRecords) * 100).toFixed(2));
+                
+                if (appState.charts.genre) {
+                    appState.charts.genre.destroy();
+                }
+                
+                appState.charts.genre = new Chart(genreCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: genreLabels,
+                        datasets: [{
+                            label: '数量',
+                            data: genreData,
+                            backgroundColor: '#5D5CDE',
+                            borderColor: '#4F46E5',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        indexAxis: 'y',
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const index = context.dataIndex;
+                                        return `数量: ${context.raw}（${genrePercentages[index]}%）`;
+                                    }
+                                }
+                            },
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            x: {
+                                beginAtZero: true,
+                                grid: {
+                                    color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                                },
+                                ticks: {
+                                    color: textColor
+                                }
+                            },
+                            y: {
+                                grid: {
+                                    display: false
+                                },
+                                ticks: {
+                                    color: textColor
+                                }
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                addLog(`创建图表时出错: ${error.message}`, 'error');
+                showError('创建图表失败，请重试');
+            }
+        }
+
+        // 准备步骤3的表单
+        function prepareStep3() {
+            try {
+                const { languages, formats, genres } = appState.analysis;
+                
+                // 清空现有的比例设置
+                document.getElementById('language-proportions').innerHTML = '';
+                document.getElementById('format-proportions').innerHTML = '';
+                document.getElementById('genre-proportions').innerHTML = '';
+                
+                // 从示例中获取默认比例
+                let defaultLanguageProps = {};
+                let defaultFormatProps = {};
+                let defaultGenreProps = {};
+                
+                // 尝试识别语言值并匹配示例
+                const languageKeys = Object.keys(languages);
+                const hasChinese = languageKeys.some(lang => /中文/.test(lang));
+                const hasEnglish = languageKeys.some(lang => /英文/.test(lang));
+                
+                if (hasChinese && hasEnglish) {
+                    const chineseKey = languageKeys.find(lang => /中文/.test(lang));
+                    const englishKey = languageKeys.find(lang => /英文/.test(lang));
+                    defaultLanguageProps[chineseKey] = 74;
+                    defaultLanguageProps[englishKey] = 26;
+                }
+                
+                // 尝试识别格式值并匹配示例
+                const formatKeys = Object.keys(formats);
+                const hasURL = formatKeys.some(format => /web|url|网页/i.test(format));
+                const hasPDF = formatKeys.some(format => /pdf/i.test(format));
+                const hasPPT = formatKeys.some(format => /ppt/i.test(format));
+                
+                if (hasURL && hasPDF && hasPPT) {
+                    const urlKey = formatKeys.find(format => /web|url|网页/i.test(format));
+                    const pdfKey = formatKeys.find(format => /pdf/i.test(format));
+                    const pptKey = formatKeys.find(format => /ppt/i.test(format));
+                    defaultFormatProps[urlKey] = 93;
+                    defaultFormatProps[pdfKey] = 6;
+                    defaultFormatProps[pptKey] = 1;
+                }
+                
+                // 尝试识别体裁值并匹配示例
+                const genreMap = {
+                    '新闻': 46,
+                    '观点': 17,
+                    '学术': 8,
+                    '访谈': 7,
+                    '教程': 6,
+                    '生活': 5,
+                    '研报': 4,
+                    '科普': 2.5,
+                    '政府': 1.8,
+                    '其他': 2.37
+                };
+                
+                Object.keys(genres).forEach(genre => {
+                    for (const [key, value] of Object.entries(genreMap)) {
+                        if (genre.includes(key)) {
+                            defaultGenreProps[genre] = value;
+                            break;
+                        }
+                    }
+                });
+                
+                // 如果没有匹配到示例，设置均匀分布
+                if (Object.keys(defaultLanguageProps).length === 0) {
+                    const languageValue = (100 / languageKeys.length).toFixed(2);
+                    languageKeys.forEach(lang => {
+                        defaultLanguageProps[lang] = languageValue;
+                    });
+                }
+                
+                if (Object.keys(defaultFormatProps).length === 0) {
+                    const formatValue = (100 / formatKeys.length).toFixed(2);
+                    formatKeys.forEach(format => {
+                        defaultFormatProps[format] = formatValue;
+                    });
+                }
+                
+                if (Object.keys(defaultGenreProps).length === 0) {
+                    const genreValue = (100 / Object.keys(genres).length).toFixed(2);
+                    Object.keys(genres).forEach(genre => {
+                        defaultGenreProps[genre] = genreValue;
+                    });
+                }
+                
+                // 添加语言比例行
+                Object.entries(defaultLanguageProps).forEach(([lang, value]) => {
+                    addProportionRow('language', lang, value);
+                });
+                
+                // 添加格式比例行
+                Object.entries(defaultFormatProps).forEach(([format, value]) => {
+                    addProportionRow('format', format, value);
+                });
+                
+                // 添加体裁比例行
+                Object.entries(defaultGenreProps).forEach(([genre, value]) => {
+                    addProportionRow('genre', genre, value);
+                });
+                
+                function addProportionRow(type, label, value) {
+                    const container = document.getElementById(`${type}-proportions`);
+                    const index = container.children.length;
+                    
+                    const template = document.createElement('template');
+                    template.innerHTML = `
+                        <div class="flex items-center gap-3" data-${type}-index="${index}">
+                            <div class="flex-1">
+                                <input type="text" class="${type}-label w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 text-base" value="${label}">
+                            </div>
+                            <div class="flex-1">
+                                <div class="relative">
+                                    <input type="number" class="${type}-value w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 text-base" value="${value}" min="0" max="100" step="0.1">
+                                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                        <span class="text-gray-500">%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="remove-${type}-btn text-red-500 hover:text-red-700" title="删除">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                    `.trim();
+                    const row = template.content.firstChild;
+                    
+                    // 添加删除事件
+                    row.querySelector(`.remove-${type}-btn`).addEventListener('click', () => {
+                        row.remove();
+                    });
+                    
+                    container.appendChild(row);
+                    
+                    return row;
+                }
+                
+                addLog('目标比例设置表单准备完成');
+            } catch (error) {
+                addLog(`准备目标比例设置表单时出错: ${error.message}`, 'error');
+                showError('准备比例设置表单失败');
+            }
+        }
+
+        // 抽样算法 - 支持两种模式：留空或补充
+        function sampleData() {
+            try {
+                const { rows } = appState.originalData;
+                const langColIndex = appState.mappings.language;
+                const formatColIndex = appState.mappings.format;
+                const genreColIndex = appState.mappings.genre;
+                const totalSamples = appState.targetSettings.totalSamples;
+                
+                // 获取用户选择的缺失组合处理方式
+                const missingHandling = document.querySelector('input[name="missing-handling"]:checked').value;
+                const shouldFillMissing = missingHandling === 'fill';
+                
+                // 统计所有语言-格式-体裁组合的目标数量
+                const targetCombinations = {};
+                const missingCombinations = [];
+                
+                // 获取所有唯一值
+                const allLanguages = Object.keys(appState.analysis.languages);
+                const allFormats = Object.keys(appState.analysis.formats);
+                const allGenres = Object.keys(appState.analysis.genres);
+                
+                // 计算每个组合的目标比例和数量
+                allLanguages.forEach(lang => {
+                    const langProportion = appState.targetSettings.languageProportions[lang] || 0;
+                    
+                    allFormats.forEach(format => {
+                        const formatProportion = appState.targetSettings.formatProportions[format] || 0;
+                        
+                        allGenres.forEach(genre => {
+                            const genreProportion = appState.targetSettings.genreProportions[genre] || 0;
+                            
+                            // 计算这个组合的目标数量
+                            const combinationProportion = langProportion * formatProportion * genreProportion;
+                            const targetCount = Math.round(totalSamples * combinationProportion);
+                            
+                            const key = `${lang}|${format}|${genre}`;
+                            targetCombinations[key] = targetCount;
+                            
+                            // 检查是否存在这个组合
+                            if (!appState.analysis.crossDistribution[key] && targetCount > 0) {
+                                missingCombinations.push({
+                                    lang,
+                                    format,
+                                    genre,
+                                    targetCount
+                                });
+                            }
+                        });
+                    });
+                });
+                
+                // 对原始数据进行分组
+                const groupedData = {};
+                rows.forEach((row, index) => {
+                    // 确保行数据包含映射的列
+                    if (row.length <= Math.max(langColIndex, formatColIndex, genreColIndex)) {
+                        return; // 跳过数据不完整的行
+                    }
+                    
+                    // 提取数据，确保是字符串并去除空格
+                    const lang = (row[langColIndex]?.toString() || '').trim() || '未知';
+                    const format = (row[formatColIndex]?.toString() || '').trim() || '未知';
+                    const genre = (row[genreColIndex]?.toString() || '').trim() || '未知';
+                    
+                    const key = `${lang}|${format}|${genre}`;
+                    if (!groupedData[key]) {
+                        groupedData[key] = [];
+                    }
+                    groupedData[key].push({ index, row });
+                });
+                
+                // 抽样 - 仅从存在的组合中抽取
+                const selectedIndices = new Set();
+                const selectedRows = [];
+                
+                // 处理所有存在的组合
+                Object.entries(targetCombinations).forEach(([key, targetCount]) => {
+                    if (targetCount > 0 && groupedData[key]) {
+                        const available = groupedData[key];
+                        const toSelect = Math.min(targetCount, available.length);
+                        
+                        // 随机抽取
+                        const shuffled = [...available].sort(() => 0.5 - Math.random());
+                        for (let i = 0; i < toSelect; i++) {
+                            const { index, row } = shuffled[i];
+                            if (!selectedIndices.has(index)) {
+                                selectedIndices.add(index);
+                                selectedRows.push(row);
+                            }
+                        }
+                    }
+                });
+                
+                // 处理缺失组合 - 根据用户选择决定是否填充
+                if (shouldFillMissing && selectedRows.length < totalSamples) {
+                    addLog('用户选择了补充缺失组合，尝试寻找替代数据...');
+                    
+                    // 计算还需要多少样本
+                    const remaining = totalSamples - selectedRows.length;
+                    
+                    // 找出可用的数据（未被选中的）
+                    const availableRows = [];
+                    rows.forEach((row, index) => {
+                        if (!selectedIndices.has(index) && row.length > Math.max(langColIndex, formatColIndex, genreColIndex)) {
+                            availableRows.push({ index, row });
+                        }
+                    });
+                    
+                    // 随机选择剩余数量
+                    if (availableRows.length > 0) {
+                        const shuffled = [...availableRows].sort(() => 0.5 - Math.random());
+                        const toSelect = Math.min(remaining, shuffled.length);
+                        
+                        for (let i = 0; i < toSelect; i++) {
+                            const { index, row } = shuffled[i];
+                            selectedIndices.add(index);
+                            selectedRows.push(row);
+                        }
+                        
+                        addLog(`补充了 ${toSelect} 条数据以达到目标数量`, 'success');
+                    } else {
+                        addLog('没有更多可用的数据进行补充', 'warning');
+                    }
+                } else if (!shouldFillMissing && missingCombinations.length > 0) {
+                    addLog('用户选择了保留缺失组合，不进行补充');
+                }
+                
+                if (selectedRows.length === 0) {
+                    throw new Error('未能抽取到任何样本');
+                }
+                
+                // 分析抽样结果
+                const resultAnalysis = analyzeResultDistribution(selectedRows);
+                
+                // 保存抽样结果
+                appState.samplingResult = {
+                    data: selectedRows,
+                    analysis: resultAnalysis,
+                    missingCombinations: shouldFillMissing ? [] : missingCombinations // 如果选择了补充，则不显示缺失组合
+                };
+                
+                addLog(`抽样完成: 成功抽取 ${selectedRows.length} 条数据 (目标数: ${totalSamples})`, 'success');
+                if (!shouldFillMissing && missingCombinations.length > 0) {
+                    addLog(`发现 ${missingCombinations.length} 个缺失的数据组合`, 'warning');
+                }
+                
+                return {
+                    selectedRows,
+                    resultAnalysis,
+                    missingCombinations: shouldFillMissing ? [] : missingCombinations
+                };
+            } catch (error) {
+                addLog(`抽样过程中出错: ${error.message}`, 'error');
+                throw new Error('抽样过程失败: ' + (error.message || '未知错误'));
+            }
+        }
+
+        // 分析抽样结果分布
+        function analyzeResultDistribution(selectedRows) {
+            try {
+                const langColIndex = appState.mappings.language;
+                const formatColIndex = appState.mappings.format;
+                const genreColIndex = appState.mappings.genre;
+                
+                const languages = {};
+                const formats = {};
+                const genres = {};
+                const crossDistribution = {};
+                
+                // 记录有效行数
+                let validRows = 0;
+                
+                selectedRows.forEach(row => {
+                    // 确保行数据包含映射的列
+                    if (row.length <= Math.max(langColIndex, formatColIndex, genreColIndex)) {
+                        return; // 跳过数据不完整的行
+                    }
+                    
+                    // 提取数据，确保是字符串并去除空格
+                    const lang = (row[langColIndex]?.toString() || '').trim() || '未知';
+                    const format = (row[formatColIndex]?.toString() || '').trim() || '未知';
+                    const genre = (row[genreColIndex]?.toString() || '').trim() || '未知';
+                    
+                    validRows++;
+                    
+                    // 统计各维度数量
+                    languages[lang] = (languages[lang] || 0) + 1;
+                    formats[format] = (formats[format] || 0) + 1;
+                    genres[genre] = (genres[genre] || 0) + 1;
+                    
+                    // 构建交叉分布
+                    const key = `${lang}|${format}|${genre}`;
+                    crossDistribution[key] = (crossDistribution[key] || 0) + 1;
+                });
+                
+                return {
+                    languages,
+                    formats,
+                    genres,
+                    crossDistribution,
+                    totalRecords: validRows
+                };
+            } catch (error) {
+                addLog(`分析抽样结果时出错: ${error.message}`, 'error');
+                throw new Error('分析抽样结果失败');
+            }
+        }
+
+        // 显示抽样结果
+        function displaySamplingResults() {
+            try {
+                const { analysis, missingCombinations } = appState.samplingResult;
+                const { languages, formats, genres, totalRecords } = analysis;
+                
+                // 更新语言结果表格
+                const langTable = document.getElementById('result-language-table');
+                langTable.innerHTML = '';
+                Object.entries(languages).sort((a, b) => b[1] - a[1]).forEach(([lang, count]) => {
+                    const percentage = (count / totalRecords * 100).toFixed(2);
+                    const targetPercentage = (appState.targetSettings.languageProportions[lang] * 100).toFixed(2);
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="px-3 py-2 whitespace-nowrap text-sm">${lang}</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${count}</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${percentage}%</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${targetPercentage}%</td>
+                    `;
+                    langTable.appendChild(row);
+                });
+                
+                // 更新格式结果表格
+                const formatTable = document.getElementById('result-format-table');
+                formatTable.innerHTML = '';
+                Object.entries(formats).sort((a, b) => b[1] - a[1]).forEach(([format, count]) => {
+                    const percentage = (count / totalRecords * 100).toFixed(2);
+                    const targetPercentage = (appState.targetSettings.formatProportions[format] * 100).toFixed(2);
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="px-3 py-2 whitespace-nowrap text-sm">${format}</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${count}</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${percentage}%</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${targetPercentage}%</td>
+                    `;
+                    formatTable.appendChild(row);
+                });
+                
+                // 更新体裁结果表格
+                const genreTable = document.getElementById('result-genre-table');
+                genreTable.innerHTML = '';
+                Object.entries(genres).sort((a, b) => b[1] - a[1]).forEach(([genre, count]) => {
+                    const percentage = (count / totalRecords * 100).toFixed(2);
+                    const targetPercentage = (appState.targetSettings.genreProportions[genre] * 100).toFixed(2);
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="px-3 py-2 whitespace-nowrap text-sm">${genre}</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${count}</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${percentage}%</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-right">${targetPercentage}%</td>
+                    `;
+                    genreTable.appendChild(row);
+                });
+                
+                // 创建抽样数据预览
+                createSamplePreviewTable();
+                
+                // 创建结果图表
+                createResultCharts();
+                
+                // 创建比例对比图表
+                createComparisonCharts();
+                
+                // 更新缺失组合提示
+                if (missingCombinations.length > 0) {
+                    const missingList = document.getElementById('missing-list');
+                    missingList.innerHTML = '';
+                    
+                    missingCombinations.forEach(({ lang, format, genre, targetCount }) => {
+                        const li = document.createElement('li');
+                        li.textContent = `${lang} × ${format} × ${genre}（目标数量: ${targetCount}）`;
+                        missingList.appendChild(li);
+                    });
+                    
+                    document.getElementById('missing-combinations').classList.remove('hidden');
+                } else {
+                    document.getElementById('missing-combinations').classList.add('hidden');
+                }
+                
+                // 更新结果统计信息
+                document.getElementById('extracted-count').textContent = totalRecords;
+                document.getElementById('original-count').textContent = appState.analysis.totalRecords;
+                document.getElementById('success-rate').textContent = `${(totalRecords / appState.targetSettings.totalSamples * 100).toFixed(2)}%`;
+                
+                // 添加到历史记录
+                historyManager.addToHistory();
+            } catch (error) {
+                addLog(`显示抽样结果时出错: ${error.message}`, 'error');
+                showError('显示抽样结果失败: ' + (error.message || '未知错误'));
+            }
+        }
+
+        // 创建比例对比图表
+        function createComparisonCharts() {
+            try {
+                const isDarkMode = document.documentElement.classList.contains('dark');
+                const textColor = isDarkMode ? '#E5E7EB' : '#1F2937';
+                
+                // 语言比例对比图表
+                const languageComparisonCtx = document.getElementById('language-comparison-chart').getContext('2d');
+                const { languages } = appState.samplingResult.analysis;
+                const { totalRecords } = appState.samplingResult.analysis;
+                const languageLabels = Object.keys(languages);
+                const languageActualPercentages = languageLabels.map(lang => 
+                    parseFloat(((languages[lang] / totalRecords) * 100).toFixed(2)));
+                const languageTargetPercentages = languageLabels.map(lang => 
+                    parseFloat((appState.targetSettings.languageProportions[lang] * 100).toFixed(2)));
+                
+                if (appState.charts.languageComparison) {
+                    appState.charts.languageComparison.destroy();
+                }
+                
+                appState.charts.languageComparison = new Chart(languageComparisonCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: languageLabels,
+                        datasets: [
+                            {
+                                label: '实际比例 (%)',
+                                data: languageActualPercentages,
+                                backgroundColor: '#5D5CDE',
+                                borderColor: '#4F46E5',
+                                borderWidth: 1
+                            },
+                            {
+                                label: '目标比例 (%)',
+                                data: languageTargetPercentages,
+                                backgroundColor: '#10B981',
+                                borderColor: '#059669',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            title: {
+                                display: false,
+                                text: '语言比例对比',
+                                font: {
+                                    size: 16,
+                                    weight: 'bold'
+                                },
+                                color: textColor
+                            },
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    color: textColor
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const index = context.dataIndex;
+                                        const datasetIndex = context.datasetIndex;
+                                        const value = context.raw;
+                                        
+                                        if (datasetIndex === 0) {
+                                            const target = languageTargetPercentages[index];
+                                            const diff = (value - target).toFixed(2);
+                                            const sign = diff > 0 ? '+' : '';
+                                            return `实际: ${value}% (${sign}${diff}%)`;
+                                        } else {
+                                            return `目标: ${value}%`;
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: {
+                                    display: false
+                                },
+                                ticks: {
+                                    color: textColor
+                                }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                grid: {
+                                    color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                                },
+                                ticks: {
+                                    color: textColor
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                // 格式比例对比图表
+                const formatComparisonCtx = document.getElementById('format-comparison-chart').getContext('2d');
+                const { formats } = appState.samplingResult.analysis;
+                const formatLabels = Object.keys(formats);
+                const formatActualPercentages = formatLabels.map(format => 
+                    parseFloat(((formats[format] / totalRecords) * 100).toFixed(2)));
+                const formatTargetPercentages = formatLabels.map(format => 
+                    parseFloat((appState.targetSettings.formatProportions[format] * 100).toFixed(2)));
+                
+                if (appState.charts.formatComparison) {
+                    appState.charts.formatComparison.destroy();
+                }
+                
+                appState.charts.formatComparison = new Chart(formatComparisonCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: formatLabels,
+                        datasets: [
+                            {
+                                label: '实际比例 (%)',
+                                data: formatActualPercentages,
+                                backgroundColor: '#3B82F6',
+                                borderColor: '#2563EB',
+                                borderWidth: 1
+                            },
+                            {
+                                label: '目标比例 (%)',
+                                data: formatTargetPercentages,
+                                backgroundColor: '#10B981',
+                                borderColor: '#059669',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            title: {
+                                display: false,
+                                text: '格式比例对比',
+                                font: {
+                                    size: 16,
+                                    weight: 'bold'
+                                },
+                                color: textColor
+                            },
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    color: textColor
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const index = context.dataIndex;
+                                        const datasetIndex = context.datasetIndex;
+                                        const value = context.raw;
+                                        
+                                        if (datasetIndex === 0) {
+                                            const target = formatTargetPercentages[index];
+                                            const diff = (value - target).toFixed(2);
+                                            const sign = diff > 0 ? '+' : '';
+                                            return `实际: ${value}% (${sign}${diff}%)`;
+                                        } else {
+                                            return `目标: ${value}%`;
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: {
+                                    display: false
+                                },
+                                ticks: {
+                                    color: textColor
+                                }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                grid: {
+                                    color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                                },
+                                ticks: {
+                                    color: textColor
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                // 体裁比例对比图表
+                const genreComparisonCtx = document.getElementById('genre-comparison-chart').getContext('2d');
+                const { genres } = appState.samplingResult.analysis;
+                const genreLabels = Object.keys(genres);
+                const genreActualPercentages = genreLabels.map(genre => 
+                    parseFloat(((genres[genre] / totalRecords) * 100).toFixed(2)));
+                const genreTargetPercentages = genreLabels.map(genre => 
+                    parseFloat((appState.targetSettings.genreProportions[genre] * 100).toFixed(2)));
+                
+                if (appState.charts.genreComparison) {
+                    appState.charts.genreComparison.destroy();
+                }
+                
+                appState.charts.genreComparison = new Chart(genreComparisonCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: genreLabels,
+                        datasets: [
+                            {
+                                label: '实际比例 (%)',
+                                data: genreActualPercentages,
+                                backgroundColor: '#5D5CDE',
+                                borderColor: '#4F46E5',
+                                borderWidth: 1
+                            },
+                            {
+                                label: '目标比例 (%)',
+                                data: genreTargetPercentages,
+                                backgroundColor: '#10B981',
+                                borderColor: '#059669',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        indexAxis: 'y',
+                        plugins: {
+                            title: {
+                                display: false,
+                                text: '体裁比例对比',
+                                font: {
+                                    size: 16,
+                                    weight: 'bold'
+                                },
+                                color: textColor
+                            },
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    color: textColor
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const index = context.dataIndex;
+                                        const datasetIndex = context.datasetIndex;
+                                        const value = context.raw;
+                                        
+                                        if (datasetIndex === 0) {
+                                            const target = genreTargetPercentages[index];
+                                            const diff = (value - target).toFixed(2);
+                                            const sign = diff > 0 ? '+' : '';
+                                            return `实际: ${value}% (${sign}${diff}%)`;
+                                        } else {
+                                            return `目标: ${value}%`;
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                beginAtZero: true,
+                                grid: {
+                                    color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                                },
+                                ticks: {
+                                    color: textColor
+                                }
+                            },
+                            y: {
+                                grid: {
+                                    display: false
+                                },
+                                ticks: {
+                                    color: textColor
+                                }
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                addLog(`创建比例对比图表时出错: ${error.message}`, 'error');
+                showError('创建比例对比图表失败');
+            }
+        }
+
+        // 创建抽样数据预览表格
+        function createSamplePreviewTable() {
+            try {
+                const previewTable = document.getElementById('sample-preview-table');
+                previewTable.innerHTML = '';
+                
+                const { data } = appState.samplingResult;
+                const { headers } = appState.originalData;
+                
+                // 创建表头
+                const thead = document.createElement('thead');
+                thead.className = 'bg-gray-50 dark:bg-gray-800';
+                const headerRow = document.createElement('tr');
+                
+                headers.forEach((header, index) => {
+                    const th = document.createElement('th');
+                    th.className = 'px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider';
+                    th.textContent = header;
+                    headerRow.appendChild(th);
+                });
+                
+                thead.appendChild(headerRow);
+                previewTable.appendChild(thead);
+                
+                // 创建表格内容（前10行）
+                const tbody = document.createElement('tbody');
+                tbody.className = 'bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700';
+                
+                const previewData = data.slice(0, 10);
+                previewData.forEach(row => {
+                    const tr = document.createElement('tr');
+                    
+                    // 确保每行的单元格与表头对应
+                    for (let i = 0; i < headers.length; i++) {
+                        const td = document.createElement('td');
+                        td.className = 'px-3 py-2 whitespace-nowrap text-sm';
+                        td.textContent = i < row.length ? row[i] : '';
+                        tr.appendChild(td);
+                    }
+                    
+                    tbody.appendChild(tr);
+                });
+                
+                previewTable.appendChild(tbody);
+            } catch (error) {
+                addLog(`创建样本预览表格时出错: ${error.message}`, 'error');
+                showError('创建样本预览失败');
+            }
+        }
+
+        // 创建结果图表
+        function createResultCharts() {
+            try {
+                const { analysis } = appState.samplingResult;
+                const { languages, formats, genres, totalRecords } = analysis;
+                const isDarkMode = document.documentElement.classList.contains('dark');
+                const textColor = isDarkMode ? '#E5E7EB' : '#1F2937';
+                
+                // 语言分布结果图表
+                const languageCtx = document.getElementById('result-language-chart').getContext('2d');
+                const languageLabels = Object.keys(languages);
+                const languageData = Object.values(languages);
+                const languagePercentages = languageData.map(count => ((count / totalRecords) * 100).toFixed(2));
+                
+                if (appState.charts.resultLanguage) {
+                    appState.charts.resultLanguage.destroy();
+                }
+                
+                appState.charts.resultLanguage = new Chart(languageCtx, {
+                    type: 'pie',
+                    data: {
+                        labels: languageLabels,
+                        datasets: [{
+                            data: languageData,
+                            backgroundColor: [
+                                '#5D5CDE', '#F59E0B', '#10B981', '#EC4899',
+                                '#8B5CF6', '#EF4444', '#3B82F6', '#14B8A6'
+                            ]
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const index = context.dataIndex;
+                                        return `${context.label}: ${context.raw}（${languagePercentages[index]}%）`;
+                                    }
+                                }
+                            },
+                            legend: {
+                                position: 'right',
+                                labels: {
+                                    color: textColor
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                // 数据格式分布结果图表
+                const formatCtx = document.getElementById('result-format-chart').getContext('2d');
+                const formatLabels = Object.keys(formats);
+                const formatData = Object.values(formats);
+                const formatPercentages = formatData.map(count => ((count / totalRecords) * 100).toFixed(2));
+                
+                if (appState.charts.resultFormat) {
+                    appState.charts.resultFormat.destroy();
+                }
+                
+                appState.charts.resultFormat = new Chart(formatCtx, {
+                    type: 'pie',
+                    data: {
+                        labels: formatLabels,
+                        datasets: [{
+                            data: formatData,
+                            backgroundColor: [
+                                '#3B82F6', '#F59E0B', '#10B981', '#EC4899',
+                                '#8B5CF6', '#EF4444', '#5D5CDE', '#14B8A6'
+                            ]
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const index = context.dataIndex;
+                                        return `${context.label}: ${context.raw}（${formatPercentages[index]}%）`;
+                                    }
+                                }
+                            },
+                            legend: {
+                                position: 'right',
+                                labels: {
+                                    color: textColor
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                // 内容体裁分布结果图表
+                const genreCtx = document.getElementById('result-genre-chart').getContext('2d');
+                const genreLabels = Object.keys(genres);
+                const genreData = Object.values(genres);
+                const genrePercentages = genreData.map(count => ((count / totalRecords) * 100).toFixed(2));
+                
+                if (appState.charts.resultGenre) {
+                    appState.charts.resultGenre.destroy();
+                }
+                
+                appState.charts.resultGenre = new Chart(genreCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: genreLabels,
+                        datasets: [{
+                            label: '数量',
+                            data: genreData,
+                            backgroundColor: '#5D5CDE',
+                            borderColor: '#4F46E5',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        indexAxis: 'y',
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const index = context.dataIndex;
+                                        return `数量: ${context.raw}（${genrePercentages[index]}%）`;
+                                    }
+                                }
+                            },
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            x: {
+                                beginAtZero: true,
+                                grid: {
+                                    color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                                },
+                                ticks: {
+                                    color: textColor
+                                }
+                            },
+                            y: {
+                                grid: {
+                                    display: false
+                                },
+                                ticks: {
+                                    color: textColor
+                                }
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                addLog(`创建结果图表时出错: ${error.message}`, 'error');
+                showError('创建结果图表失败');
+            }
+        }
+
+        // 导出结果为Excel
+        function exportToExcel() {
+            try {
+                const { data } = appState.samplingResult;
+                const { headers } = appState.originalData;
+                
+                // 创建工作表
+                const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+                
+                // 创建工作簿
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "抽样结果");
+                
+                // 导出
+                XLSX.writeFile(wb, "评了么_抽样结果.xlsx");
+                
+                addLog('成功导出抽样结果到Excel文件', 'success');
+                showSuccess('数据已成功导出到Excel文件');
+            } catch (error) {
+                addLog(`导出Excel时出错: ${error.message}`, 'error');
+                showError('导出Excel失败: ' + (error.message || '未知错误'));
+            }
+        }
+
+        // 初始化上传按钮事件
+        function initUploadEvents() {
+            const browseBtn = document.getElementById('browse-files');
+            const fileInput = document.getElementById('file-input');
+            const dropZone = browseBtn.closest('div');
+            
+            // 点击浏览按钮
+            browseBtn.addEventListener('click', () => {
+                fileInput.click();
+            });
+            
+            // 文件选择变化
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    const file = e.target.files[0];
+                    handleFileUpload(file);
+                }
+            });
+            
+            // 拖放区域事件
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            // 拖放高亮
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => {
+                    dropZone.classList.add('border-primary');
+                }, false);
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => {
+                    dropZone.classList.remove('border-primary');
+                }, false);
+            });
+            
+            // 处理拖放文件
+            dropZone.addEventListener('drop', (e) => {
+                const file = e.dataTransfer.files[0];
+                if (file) {
+                    handleFileUpload(file);
+                }
+            }, false);
+            
+            // 移除文件
+            document.getElementById('remove-file').addEventListener('click', () => {
+                resetApp();
+            });
+        }
+
+        // 初始化步骤切换
+        function initStepNavigation() {
+            // 返回按钮事件
+            document.getElementById('back-to-step1').addEventListener('click', () => {
+                goToStep(1);
+            });
+            
+            document.getElementById('back-to-step2').addEventListener('click', () => {
+                goToStep(2);
+            });
+            
+            // 历史记录返回按钮
+            document.getElementById('back-from-history').addEventListener('click', () => {
+                document.getElementById('history-detail').classList.add('hidden');
+                
+                // 根据当前状态返回合适的视图
+                if (appState.samplingResult.data) {
+                    document.getElementById('sample-results').classList.remove('hidden');
+                } else if (appState.analysis.totalRecords > 0) {
+                    document.getElementById('analysis-results').classList.remove('hidden');
+                } else if (appState.parsedData) {
+                    document.getElementById('parse-preview').classList.remove('hidden');
+                } else {
+                    document.getElementById('preview-placeholder').classList.remove('hidden');
+                }
+            });
+        }
+
+        // 初始化步骤1 - 解析文件
+        function initStep1() {
+            // 清空日志按钮
+            document.getElementById('clear-log').addEventListener('click', () => {
+                document.getElementById('log-content').innerHTML = '';
+                addLog('日志已清空');
+            });
+            
+            // 关闭错误提示
+            document.getElementById('dismiss-error').addEventListener('click', () => {
+                document.getElementById('error-message').classList.add('hidden');
+            });
+            
+            // 关闭成功提示
+            document.getElementById('dismiss-success').addEventListener('click', () => {
+                document.getElementById('success-message').classList.add('hidden');
+            });
+            
+            // 解析按钮
+            document.getElementById('parse-btn').addEventListener('click', parseFile);
+            
+            // 清空历史记录按钮
+            document.getElementById('clear-history').addEventListener('click', () => {
+                if (confirm('确定要清空所有历史记录吗？')) {
+                    historyManager.clearHistory();
+                }
+            });
+            
+            // 加载历史记录
+            historyManager.loadHistory();
+        }
+
+        // 初始化步骤2 - 字段映射
+        function initStep2() {
+            // 分析按钮
+            document.getElementById('analyze-btn').addEventListener('click', async () => {
+                try {
+                    const languageCol = document.getElementById('language-column').value;
+                    const formatCol = document.getElementById('format-column').value;
+                    const genreCol = document.getElementById('genre-column').value;
+                    
+                    if (!languageCol || !formatCol || !genreCol) {
+                        showError('请先选择所有必要的数据字段列');
+                        return;
+                    }
+                    
+                    // 保存映射
+                    appState.mappings = {
+                        language: parseInt(languageCol),
+                        format: parseInt(formatCol),
+                        genre: parseInt(genreCol)
+                    };
+                    
+                    addLog(`字段映射完成: 语言(${languageCol}), 格式(${formatCol}), 体裁(${genreCol})`);
+                    
+                    // 分析数据
+                    showLoading('正在分析数据...');
+                    
+                    // 使用setTimeout让UI先更新
+                    setTimeout(async () => {
+                        try {
+                            analyzeData();
+                            displayAnalysisResults();
+                            prepareStep3();
+                            goToStep(3);
+                            showSuccess('数据分析完成，请设置目标比例');
+                        } catch (error) {
+                            console.error('分析数据时出错:', error);
+                            showError('分析数据时出错: ' + (error.message || '未知错误'));
+                        } finally {
+                            hideLoading();
+                        }
+                    }, 100);
+                } catch (error) {
+                    console.error('启动分析时出错:', error);
+                    showError('启动分析失败: ' + (error.message || '未知错误'));
+                }
+            });
+        }
+
+        // 初始化步骤3 - 目标比例设置
+        function initStep3() {
+            // 添加比例按钮事件
+            document.getElementById('add-language-btn').addEventListener('click', () => {
+                addProportionRow('language');
+            });
+            
+            document.getElementById('add-format-btn').addEventListener('click', () => {
+                addProportionRow('format');
+            });
+            
+            document.getElementById('add-genre-btn').addEventListener('click', () => {
+                addProportionRow('genre');
+            });
+            
+            // 添加比例行函数
+            function addProportionRow(type, label = '', value = '') {
+                const container = document.getElementById(`${type}-proportions`);
+                const index = container.children.length;
+                
+                const template = document.createElement('template');
+                template.innerHTML = `
+                    <div class="flex items-center gap-3" data-${type}-index="${index}">
+                        <div class="flex-1">
+                            <input type="text" class="${type}-label w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 text-base" value="${label}">
+                        </div>
+                        <div class="flex-1">
+                            <div class="relative">
+                                <input type="number" class="${type}-value w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 text-base" value="${value}" min="0" max="100" step="0.1">
+                                <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                    <span class="text-gray-500">%</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button class="remove-${type}-btn text-red-500 hover:text-red-700" title="删除">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                `.trim();
+                const row = template.content.firstChild;
+                
+                // 添加删除事件
+                row.querySelector(`.remove-${type}-btn`).addEventListener('click', () => {
+                    row.remove();
+                });
+                
+                container.appendChild(row);
+                
+                return row;
+            }
+            
+            // 生成样本按钮事件
+            document.getElementById('generate-samples-btn').addEventListener('click', async () => {
+                // 获取目标比例设置
+                const totalSamples = parseInt(document.getElementById('total-samples').value) || 300;
+                
+                const languageProportions = {};
+                document.querySelectorAll('[data-language-index]').forEach(row => {
+                    const label = row.querySelector('.language-label').value.trim();
+                    const value = parseFloat(row.querySelector('.language-value').value) || 0;
+                    if (label && value > 0) {
+                        languageProportions[label] = value / 100;
+                    }
+                });
+                
+                const formatProportions = {};
+                document.querySelectorAll('[data-format-index]').forEach(row => {
+                    const label = row.querySelector('.format-label').value.trim();
+                    const value = parseFloat(row.querySelector('.format-value').value) || 0;
+                    if (label && value > 0) {
+                        formatProportions[label] = value / 100;
+                    }
+                });
+                
+                const genreProportions = {};
+                document.querySelectorAll('[data-genre-index]').forEach(row => {
+                    const label = row.querySelector('.genre-label').value.trim();
+                    const value = parseFloat(row.querySelector('.genre-value').value) || 0;
+                    if (label && value > 0) {
+                        genreProportions[label] = value / 100;
+                    }
+                });
+                
+                // 保存目标设置
+                appState.targetSettings = {
+                    totalSamples,
+                    languageProportions,
+                    formatProportions,
+                    genreProportions
+                };
+                
+                addLog(`开始抽样: 目标样本数 ${totalSamples}`);
+                
+                // 开始抽样
+                showLoading('正在进行数据抽样...');
+                
+                // 使用setTimeout让UI先更新
+                setTimeout(async () => {
+                    try {
+                        await sampleData();
+                        displaySamplingResults();
+                        goToStep(4);
+                        showSuccess('数据抽样完成！');
+                    } catch (error) {
+                        console.error('抽样过程中出错:', error);
+                        hideLoading();
+                        showError('抽样过程中出错: ' + (error.message || '未知错误'));
+                    } finally {
+                        hideLoading();
+                    }
+                }, 100);
+            });
+        }
+
+        // 初始化步骤4 - 结果
+        function initStep4() {
+            // 下载结果按钮
+            document.getElementById('download-result').addEventListener('click', exportToExcel);
+            
+            // 重新抽样按钮
+            document.getElementById('new-sample-btn').addEventListener('click', () => {
+                goToStep(3);
+            });
+        }
+
+        // 初始化视图切换
+        function initViewToggle() {
+            // 分析结果视图切换
+            document.getElementById('table-view-btn').addEventListener('click', () => {
+                document.getElementById('table-view').classList.remove('hidden');
+                document.getElementById('chart-view').classList.add('hidden');
+                document.getElementById('table-view-btn').classList.add('bg-primary', 'text-white');
+                document.getElementById('table-view-btn').classList.remove('bg-gray-200', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+                document.getElementById('chart-view-btn').classList.remove('bg-primary', 'text-white');
+                document.getElementById('chart-view-btn').classList.add('bg-gray-200', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+            });
+            
+            document.getElementById('chart-view-btn').addEventListener('click', () => {
+                document.getElementById('table-view').classList.add('hidden');
+                document.getElementById('chart-view').classList.remove('hidden');
+                document.getElementById('chart-view-btn').classList.add('bg-primary', 'text-white');
+                document.getElementById('chart-view-btn').classList.remove('bg-gray-200', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+                document.getElementById('table-view-btn').classList.remove('bg-primary', 'text-white');
+                document.getElementById('table-view-btn').classList.add('bg-gray-200', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+            });
+            
+            // 抽样结果视图切换
+            document.getElementById('result-table-btn').addEventListener('click', () => {
+                document.getElementById('result-table-view').classList.remove('hidden');
+                document.getElementById('result-chart-view').classList.add('hidden');
+                document.getElementById('result-table-btn').classList.add('bg-primary', 'text-white');
+                document.getElementById('result-table-btn').classList.remove('bg-gray-200', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+                document.getElementById('result-chart-btn').classList.remove('bg-primary', 'text-white');
+                document.getElementById('result-chart-btn').classList.add('bg-gray-200', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+            });
+            
+            document.getElementById('result-chart-btn').addEventListener('click', () => {
+                document.getElementById('result-table-view').classList.add('hidden');
+                document.getElementById('result-chart-view').classList.remove('hidden');
+                document.getElementById('result-chart-btn').classList.add('bg-primary', 'text-white');
+                document.getElementById('result-chart-btn').classList.remove('bg-gray-200', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+                document.getElementById('result-table-btn').classList.remove('bg-primary', 'text-white');
+                document.getElementById('result-table-btn').classList.add('bg-gray-200', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+            });
+            
+            // 结果标签页切换
+            document.getElementById('tab-basic').addEventListener('click', () => {
+                // 切换标签激活状态
+                document.querySelectorAll('[id^="tab-"]').forEach(tab => {
+                    tab.classList.remove('tab-active');
+                    tab.classList.add('text-gray-500', 'dark:text-gray-400', 'hover:text-gray-700', 'dark:hover:text-gray-300');
+                });
+                document.getElementById('tab-basic').classList.add('tab-active');
+                document.getElementById('tab-basic').classList.remove('text-gray-500', 'dark:text-gray-400', 'hover:text-gray-700', 'dark:hover:text-gray-300');
+                
+                // 切换面板显示
+                document.getElementById('panel-basic').classList.remove('hidden');
+                document.getElementById('panel-comparison').classList.add('hidden');
+                document.getElementById('panel-data').classList.add('hidden');
+            });
+            
+            document.getElementById('tab-comparison').addEventListener('click', () => {
+                // 切换标签激活状态
+                document.querySelectorAll('[id^="tab-"]').forEach(tab => {
+                    tab.classList.remove('tab-active');
+                    tab.classList.add('text-gray-500', 'dark:text-gray-400', 'hover:text-gray-700', 'dark:hover:text-gray-300');
+                });
+                document.getElementById('tab-comparison').classList.add('tab-active');
+                document.getElementById('tab-comparison').classList.remove('text-gray-500', 'dark:text-gray-400', 'hover:text-gray-700', 'dark:hover:text-gray-300');
+                
+                // 切换面板显示
+                document.getElementById('panel-basic').classList.add('hidden');
+                document.getElementById('panel-comparison').classList.remove('hidden');
+                document.getElementById('panel-data').classList.add('hidden');
+            });
+            
+            document.getElementById('tab-data').addEventListener('click', () => {
+                // 切换标签激活状态
+                document.querySelectorAll('[id^="tab-"]').forEach(tab => {
+                    tab.classList.remove('tab-active');
+                    tab.classList.add('text-gray-500', 'dark:text-gray-400', 'hover:text-gray-700', 'dark:hover:text-gray-300');
+                });
+                document.getElementById('tab-data').classList.add('tab-active');
+                document.getElementById('tab-data').classList.remove('text-gray-500', 'dark:text-gray-400', 'hover:text-gray-700', 'dark:hover:text-gray-300');
+                
+                // 切换面板显示
+                document.getElementById('panel-basic').classList.add('hidden');
+                document.getElementById('panel-comparison').classList.add('hidden');
+                document.getElementById('panel-data').classList.remove('hidden');
+            });
+            
+            // 历史记录标签页切换
+            document.getElementById('history-tab-language').addEventListener('click', () => {
+                // 切换标签激活状态
+                document.querySelectorAll('[id^="history-tab-"]').forEach(tab => {
+                    tab.classList.remove('tab-active');
+                    tab.classList.add('text-gray-500', 'dark:text-gray-400', 'hover:text-gray-700', 'dark:hover:text-gray-300');
+                });
+                document.getElementById('history-tab-language').classList.add('tab-active');
+                document.getElementById('history-tab-language').classList.remove('text-gray-500', 'dark:text-gray-400', 'hover:text-gray-700', 'dark:hover:text-gray-300');
+                
+                // 切换面板显示
+                document.getElementById('history-panel-language').classList.remove('hidden');
+                document.getElementById('history-panel-format').classList.add('hidden');
+                document.getElementById('history-panel-genre').classList.add('hidden');
+            });
+            
+            document.getElementById('history-tab-format').addEventListener('click', () => {
+                // 切换标签激活状态
+                document.querySelectorAll('[id^="history-tab-"]').forEach(tab => {
+                    tab.classList.remove('tab-active');
+                    tab.classList.add('text-gray-500', 'dark:text-gray-400', 'hover:text-gray-700', 'dark:hover:text-gray-300');
+                });
+                document.getElementById('history-tab-format').classList.add('tab-active');
+                document.getElementById('history-tab-format').classList.remove('text-gray-500', 'dark:text-gray-400', 'hover:text-gray-700', 'dark:hover:text-gray-300');
+                
+                // 切换面板显示
+                document.getElementById('history-panel-language').classList.add('hidden');
+                document.getElementById('history-panel-format').classList.remove('hidden');
+                document.getElementById('history-panel-genre').classList.add('hidden');
+            });
+            
+            document.getElementById('history-tab-genre').addEventListener('click', () => {
+                // 切换标签激活状态
+                document.querySelectorAll('[id^="history-tab-"]').forEach(tab => {
+                    tab.classList.remove('tab-active');
+                    tab.classList.add('text-gray-500', 'dark:text-gray-400', 'hover:text-gray-700', 'dark:hover:text-gray-300');
+                });
+                document.getElementById('history-tab-genre').classList.add('tab-active');
+                document.getElementById('history-tab-genre').classList.remove('text-gray-500', 'dark:text-gray-400', 'hover:text-gray-700', 'dark:hover:text-gray-300');
+                
+                // 切换面板显示
+                document.getElementById('history-panel-language').classList.add('hidden');
+                document.getElementById('history-panel-format').classList.add('hidden');
+                document.getElementById('history-panel-genre').classList.remove('hidden');
+            });
+        }
+
+        // 初始化应用
+        function initApp() {
+            initUploadEvents();
+            initStepNavigation();
+            initStep1();
+            initStep2();
+            initStep3();
+            initStep4();
+            initViewToggle();
+            
+            // 默认显示步骤1
+            goToStep(1);
+            
+            addLog('评了么 - 强化版数据抽样工具已准备就绪');
+        }
+
+        // 当DOM加载完成时初始化应用
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>
